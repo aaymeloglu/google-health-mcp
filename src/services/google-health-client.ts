@@ -5,7 +5,8 @@ import {
   GOOGLE_HEALTH_AUTH_URL,
   GOOGLE_HEALTH_REVOKE_URL,
   GOOGLE_HEALTH_TOKEN_URL,
-  MAX_GOOGLE_HEALTH_LIMIT
+  MAX_GOOGLE_HEALTH_LIMIT,
+  SERVER_VERSION
 } from "../constants.js";
 import type { GoogleHealthConfig, GoogleHealthTokenSet } from "../types.js";
 import { disabledCacheStatus, GoogleHealthCache, type CacheStatus } from "./cache.js";
@@ -262,7 +263,7 @@ export class GoogleHealthClient {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
       "Content-Type": "application/json",
-      "User-Agent": "google-health-mcp-server/0.1.1"
+      "User-Agent": `google-health-mcp-server/${SERVER_VERSION}`
     };
   }
 
@@ -270,7 +271,7 @@ export class GoogleHealthClient {
     return {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      "User-Agent": "google-health-mcp-server/0.1.1"
+      "User-Agent": `google-health-mcp-server/${SERVER_VERSION}`
     };
   }
 

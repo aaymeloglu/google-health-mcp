@@ -41,11 +41,49 @@ It lets Claude, Cursor, Hermes, OpenClaw and other MCP clients read user-authori
 
 > **Unofficial project.** Not affiliated with, endorsed by or supported by Google, Fitbit or Alphabet. Not a medical device. Not medical advice.
 
+## Beta Testers Wanted
+
+The highest-leverage contribution right now is real setup feedback from Fitbit, Pixel Watch, Android and Google Health API v4 users.
+
+If you can test with a real account:
+
+- Run `npx -y google-health-mcp-unofficial doctor` and confirm the OAuth flow is clear.
+- Try `google_health_connection_status`, `google_health_data_inventory` and `google_health_daily_summary` from your MCP client.
+- Open an issue for missing data types, confusing setup steps, client-specific friction or privacy concerns.
+- Do **not** paste OAuth tokens, client secrets or personal health measurements into public issues.
+
+Useful links:
+
+- [Beta testers wanted](https://github.com/davidmosiah/google-health-mcp/issues/2)
+- [Data coverage validation](https://github.com/davidmosiah/google-health-mcp/issues/3)
+- [MCP client setup feedback](https://github.com/davidmosiah/google-health-mcp/issues/4)
+- [Demo](docs/demo.md)
+- [Discovery kit](docs/discovery.md)
+
 ## Why this exists
 
 Google Health API is the successor to Fitbit Web API: new OAuth, new base URL, v4 endpoint schema, standardized data types, reconciled streams and rollups.
 
 This MCP gives agents a clean way to discover the API, check setup, authenticate locally and query data without pasting tokens into prompts or agent configs.
+
+## 30-second Demo
+
+<p align="center">
+  <img src="assets/terminal-demo.svg" alt="Google Health MCP terminal demo showing local doctor checks" width="85%" />
+</p>
+
+```bash
+npx -y google-health-mcp-unofficial setup
+npx -y google-health-mcp-unofficial auth
+npx -y google-health-mcp-unofficial doctor
+```
+
+Then start your agent with:
+
+- `google_health_connection_status`
+- `google_health_data_inventory`
+- `google_health_privacy_audit`
+- `google_health_daily_summary`
 
 ## Install
 

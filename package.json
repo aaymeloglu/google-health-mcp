@@ -1,6 +1,6 @@
 {
   "name": "google-health-mcp-unofficial",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Unofficial local-first Google Health API v4 MCP server for AI health, sleep and activity agents.",
   "type": "module",
   "bin": {
@@ -8,6 +8,7 @@
     "google-health-mcp-server": "dist/index.js"
   },
   "files": [
+    "assets",
     "dist",
     "README.md",
     "LICENSE",

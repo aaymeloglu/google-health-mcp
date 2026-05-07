@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2
+
+- Added public beta tester calls to action for Fitbit, Pixel Watch, Android and Google Health API v4 users.
+- Added a terminal demo asset and expanded quickstart/demo docs for MCP builders.
+- Added discovery copy for MCP directories and launch posts.
+- Included top-level `assets/` in the npm package so README images render from packaged installs.
+
+## 0.1.1
+
+- Added a custom Google Health MCP banner and refreshed the README header.
+- Published the npm package as `google-health-mcp-unofficial`.
+
 ## 0.1.0
 
 - Initial beta Google Health API v4 MCP connector.
