@@ -14,6 +14,7 @@ if (packageJson.private !== true && packageJson.license !== 'UNLICENSED') {
 }
 requireFile('llms.txt');
 requireFile('server.json');
+requireFile('glama.json');
 
 if (serverJson.version !== packageJson.version) {
   errors.push(`server.json version ${serverJson.version} does not match package.json version ${packageJson.version}`);

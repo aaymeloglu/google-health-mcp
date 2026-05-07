@@ -14,6 +14,7 @@
     "LICENSE",
     "SECURITY.md",
     "CHANGELOG.md",
+    "glama.json",
     "server.json",
     "docs/.nojekyll",
     "docs/.well-known",

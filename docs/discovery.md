@@ -31,10 +31,17 @@ npx -y google-health-mcp-unofficial doctor
 
 ## Directory Submission Targets
 
-- Glama: https://glama.ai/
-- Smithery: https://smithery.ai/
+- MCP.Directory: https://mcp.directory/submit
+- Glama: https://glama.ai/ (`glama.json` included for maintainer claim/discovery)
+- Smithery: https://smithery.ai/ (publish flow requires Smithery account/CLI)
 - MCP Servers: https://mcpservers.org/submit
 - Awesome MCP Servers: https://github.com/wong2/awesome-mcp-servers
+
+## Submission Status
+
+- MCP.Directory: submitted for review on 2026-05-07 with GitHub URL and npm package, no email.
+- MCPHub: form detected but submit path requires sign-in; do not automate with personal contact data.
+- MCP Find: public submit page points to a GitHub PR workflow, but the linked repository was not resolvable during review.
 
 ## Launch Post
 
