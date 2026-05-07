@@ -1,4 +1,37 @@
-# Google Health MCP
+<!-- delx-wellness header v2 -->
+<h1 align="center">Google Health MCP</h1>
+
+<div align="center">
+  <img src="assets/banner.png" alt="Google Health MCP — Google Health MCP for AI agents" width="85%" />
+</div>
+
+<h3 align="center">
+  Read user-authorized Google Health API v4 data &mdash; Fitbit, Pixel Watch and partners &mdash; locally via OAuth. <strong>Beta</strong>.<br>
+  Local-first MCP server &mdash; <strong>tokens never leave your machine</strong>.
+</h3>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/google-health-mcp-unofficial"><img src="https://img.shields.io/npm/v/google-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=10B981&logo=npm&logoColor=white" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/google-health-mcp-unofficial"><img src="https://img.shields.io/npm/dm/google-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=0EA5A3&logo=npm&logoColor=white" alt="npm downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-22C55E?style=for-the-badge&labelColor=0F172A" alt="License MIT" /></a>
+  <a href="https://wellness.delx.ai/connectors/google-health"><img src="https://img.shields.io/badge/SITE-wellness.delx.ai-0EA5A3?style=for-the-badge&labelColor=0F172A" alt="Site" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/davidmosiah/google-health-mcp/stargazers"><img src="https://img.shields.io/github/stars/davidmosiah/google-health-mcp?style=for-the-badge&labelColor=0F172A&color=FBBF24&logo=github" alt="GitHub stars" /></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/BUILT_FOR-MCP-7C3AED?style=for-the-badge&labelColor=0F172A" alt="Built for MCP" /></a>
+  <a href="https://github.com/davidmosiah/delx-wellness-hermes"><img src="https://img.shields.io/badge/HERMES-one--command_setup-10B981?style=for-the-badge&labelColor=0F172A" alt="Hermes one-command setup" /></a>
+  <a href="https://github.com/davidmosiah/delx-wellness"><img src="https://img.shields.io/badge/Google%20Health-4285F4?style=for-the-badge&labelColor=0F172A&logoColor=white" alt="Google Health" /></a>
+</p>
+
+> ⚡ **One-command install** with [Delx Wellness for Hermes](https://github.com/davidmosiah/delx-wellness-hermes):
+> `npx -y delx-wellness-hermes setup` &mdash; preconfigures this connector and the other 8 in a dedicated Hermes profile.
+>
+> Or wire it standalone into Claude Desktop / Cursor / ChatGPT Desktop &mdash; see the install section below.
+
+---
+
+<!-- /delx-wellness header v2 -->
 
 Unofficial, local-first MCP server for the new **Google Health API v4**.
 
