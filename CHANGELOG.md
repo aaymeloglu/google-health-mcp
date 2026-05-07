@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Added `glama.json` for Glama maintainer claim and MCP discovery metadata.
+- Included `glama.json` in npm package files and metadata checks.
+- Recorded directory submission status in the discovery kit.
+
 ## 0.1.2
 
 - Added public beta tester calls to action for Fitbit, Pixel Watch, Android and Google Health API v4 users.
