@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const pinnedPackage = `google-health-mcp-unofficial@${packageJson.version}`;
 const dir = mkdtempSync(join(tmpdir(), 'google-health-mcp-hermes-agent-'));
+const normalizePath = (value) => value.replace(/\\/g, '/');
 
 const client = new Client({ name: 'google-health-mcp-hermes-agent-test', version: '0.0.0' });
 const transport = new StdioClientTransport({ command: 'node', args: ['dist/index.js'] });
@@ -53,16 +54,18 @@ try {
     'client-secret',
     '--redirect-uri',
     'http://127.0.0.1:3000/callback',
+    '--home-dir',
+    dir,
     '--no-auth',
     '--json'
   ], {
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, HOME: dir }
+    env: { PATH: process.env.PATH }
   });
   assert.equal(setup.status, 0, setup.stderr);
   const setupPayload = JSON.parse(setup.stdout);
   assert.equal(setupPayload.client, 'hermes');
-  assert.ok(setupPayload.hermes_skill_path.endsWith('.hermes/skills/google-health-mcp/SKILL.md'));
+  assert.ok(normalizePath(setupPayload.hermes_skill_path).endsWith('.hermes/skills/google-health-mcp/SKILL.md'));
   assert.ok(setupPayload.next_step.includes('/reload-mcp'));
   assert.ok(existsSync(setupPayload.hermes_skill_path), 'Hermes setup should write the packaged Hermes skill.');
 
@@ -70,9 +73,9 @@ try {
   assert.match(hermesConfig, new RegExp(pinnedPackage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(readFileSync(setupPayload.hermes_skill_path, 'utf8'), /mcp_google_health_google_health_connection_status/);
 
-  const doctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--client', 'hermes', '--json'], {
+  const doctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--client', 'hermes', '--json', '--home-dir', dir], {
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, HOME: dir }
+    env: { PATH: process.env.PATH }
   });
   assert.equal(doctor.status, 0, doctor.stderr);
   const doctorPayload = JSON.parse(doctor.stdout);
@@ -105,11 +108,13 @@ try {
     'client-secret',
     '--redirect-uri',
     'http://127.0.0.1:3000/callback',
+    '--home-dir',
+    mergeDir,
     '--no-auth',
     '--json'
   ], {
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, HOME: mergeDir }
+    env: { PATH: process.env.PATH }
   });
   assert.equal(mergeSetup.status, 0, mergeSetup.stderr);
   const mergedConfig = readFileSync(join(mergeDir, '.hermes', 'config.yaml'), 'utf8');
