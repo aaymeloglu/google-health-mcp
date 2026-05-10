@@ -10,6 +10,12 @@ export interface LocalRedirectPlan {
   path: string;
 }
 
+export interface BrowserOpenCommand {
+  command: string;
+  args: string[];
+  env?: NodeJS.ProcessEnv;
+}
+
 export function parseLocalRedirectUri(value: string): LocalRedirectPlan {
   const url = new URL(value);
   const localHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
@@ -130,10 +136,35 @@ function waitForOAuthCode(
   });
 }
 
+export function buildBrowserOpenCommand(url: string, platform: NodeJS.Platform = process.platform): BrowserOpenCommand {
+  if (platform === "win32") {
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoProfile",
+        "-Command",
+        "Start-Process -FilePath $env:GOOGLE_HEALTH_MCP_AUTH_URL"
+      ],
+      env: {
+        ...process.env,
+        GOOGLE_HEALTH_MCP_AUTH_URL: url.replace(/\+/g, "%20")
+      }
+    };
+  }
+
+  return {
+    command: platform === "darwin" ? "open" : "xdg-open",
+    args: [url]
+  };
+}
+
 function openBrowser(url: string): void {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  const child = spawn(command, args, { detached: true, stdio: "ignore" });
+  const browserOpen = buildBrowserOpenCommand(url);
+  const child = spawn(browserOpen.command, browserOpen.args, {
+    detached: true,
+    stdio: "ignore",
+    env: browserOpen.env
+  });
   child.unref();
 }
 

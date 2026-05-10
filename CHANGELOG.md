@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+
+- Fixed Windows OAuth browser launch by using PowerShell `Start-Process` instead of `cmd.exe`, preventing OAuth query parameters such as `response_type=code` from being stripped.
+- Added a CLI regression test for Windows auth URL handling.
+
 ## 0.1.3
 
 - Added `glama.json` for Glama maintainer claim and MCP discovery metadata.

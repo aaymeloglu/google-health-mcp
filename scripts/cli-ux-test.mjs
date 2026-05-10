@@ -3,9 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { parseLocalRedirectUri } from '../dist/cli/auth.js';
+import * as authModule from '../dist/cli/auth.js';
 import { buildConnectionStatus } from '../dist/services/connection-status.js';
 import { DEFAULT_SCOPES } from '../dist/constants.js';
+
+const { parseLocalRedirectUri } = authModule;
 
 const dir = mkdtempSync(join(tmpdir(), 'google-health-mcp-cli-'));
 
@@ -51,6 +53,19 @@ try {
     path: '/callback'
   });
   assert.throws(() => parseLocalRedirectUri('https://example.com/callback'), /local redirect URI/i);
+
+  assert.equal(typeof authModule.buildBrowserOpenCommand, 'function');
+  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?scope=https://www.googleapis.com/auth/googlehealth.profile.readonly+https://www.googleapis.com/auth/googlehealth.sleep.readonly&response_type=code&client_id=client-id';
+  const windowsOpen = authModule.buildBrowserOpenCommand(authUrl, 'win32');
+  assert.equal(windowsOpen.command, 'powershell.exe');
+  assert.deepEqual(windowsOpen.args, [
+    '-NoProfile',
+    '-Command',
+    'Start-Process -FilePath $env:GOOGLE_HEALTH_MCP_AUTH_URL'
+  ]);
+  assert.equal(windowsOpen.env.GOOGLE_HEALTH_MCP_AUTH_URL, authUrl.replace(/\+/g, '%20'));
+  assert.match(windowsOpen.env.GOOGLE_HEALTH_MCP_AUTH_URL, /response_type=code/);
+  assert.doesNotMatch(windowsOpen.args.join(' '), /accounts\.google\.com/);
 
   const doctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--json'], {
     encoding: 'utf8',
