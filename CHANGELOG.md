@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Made CLI UX tests use `--home-dir` explicitly so Windows runners do not depend on Unix-style `HOME` behavior.
+
 ## 0.2.1
 
 - Closed the SQLite cache handle in tests so the expanded Windows CI matrix can remove temporary cache files cleanly.

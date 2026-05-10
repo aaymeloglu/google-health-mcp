@@ -80,11 +80,10 @@ try {
   assert.match(windowsOpen.env.GOOGLE_HEALTH_MCP_AUTH_URL, /response_type=code/);
   assert.doesNotMatch(windowsOpen.args.join(' '), /accounts\.google\.com/);
 
-  const doctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--json'], {
+  const doctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--json', '--home-dir', dir], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH,
-      HOME: dir
+      PATH: process.env.PATH
     }
   });
   assert.equal(doctor.status, 0, doctor.stderr);
@@ -128,13 +127,14 @@ try {
     'summary',
     '--cache',
     'sqlite',
+    '--home-dir',
+    dir,
     '--no-auth',
     '--json'
   ], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH,
-      HOME: dir
+      PATH: process.env.PATH
     }
   });
   assert.equal(setup.status, 0, setup.stderr);
@@ -153,11 +153,10 @@ try {
   assert.equal(savedConfig.GOOGLE_HEALTH_PRIVACY_MODE, 'summary');
   assert.equal(savedConfig.GOOGLE_HEALTH_CACHE, 'sqlite');
 
-  const doctorAfterSetup = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--json'], {
+  const doctorAfterSetup = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--json', '--home-dir', dir], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH,
-      HOME: dir
+      PATH: process.env.PATH
     }
   });
   assert.equal(doctorAfterSetup.status, 0, doctorAfterSetup.stderr);
@@ -182,13 +181,14 @@ try {
     'sleep',
     '--token-path',
     tokenPath,
+    '--home-dir',
+    dir,
     '--no-auth',
     '--json'
   ], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH,
-      HOME: dir
+      PATH: process.env.PATH
     }
   });
   assert.equal(sleepSetup.status, 0, sleepSetup.stderr);
