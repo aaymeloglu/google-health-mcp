@@ -1,6 +1,6 @@
 {
   "name": "google-health-mcp-unofficial",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Unofficial local-first Google Health API v4 MCP server for AI health, sleep and activity agents.",
   "type": "module",
   "bin": {
@@ -83,8 +83,7 @@
   "homepage": "https://wellness.delx.ai/connectors/google-health",
   "mcpName": "io.github.davidmosiah/google-health-mcp",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "main": "dist/index.js"
 }

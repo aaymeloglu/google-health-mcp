@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-05-11
+
+- Add `google_health_quickstart` tool — personalized 3-step setup walkthrough adapted to current state (Google Cloud OAuth client configured? token present? what's next?). Calls out the Fitbit-to-Google-Health migration path and returns cross-connector hints to pair with wellness-nourish, wellness-cycle-coach, and wellness-cgm-mcp.
+- Add `google_health_demo` tool — realistic Pixel-Watch-style example payloads of `google_health_daily_summary`, `google_health_wellness_context`, and `google_health_daily_rollup` so agents see the contract before any real Google Health API call.
+- `recommended_first_calls` on the agent manifest now leads with `google_health_quickstart` and `google_health_demo`.
+- Tool count: 19 → 21.
+
 ## 0.2.2
 
 - Made CLI UX tests use `--home-dir` explicitly so Windows runners do not depend on Unix-style `HOME` behavior.

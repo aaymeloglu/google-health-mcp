@@ -20,6 +20,7 @@ const STANDARD_TOOLS = [
   "google_health_daily_rollup",
   "google_health_daily_summary",
   "google_health_data_inventory",
+  "google_health_demo",
   "google_health_exchange_code",
   "google_health_get_auth_url",
   "google_health_get_identity",
@@ -27,6 +28,7 @@ const STANDARD_TOOLS = [
   "google_health_get_settings",
   "google_health_list_data_points",
   "google_health_privacy_audit",
+  "google_health_quickstart",
   "google_health_reconcile_data_points",
   "google_health_revoke_access",
   "google_health_rollup",
@@ -71,11 +73,11 @@ export function buildAgentManifest(client: AgentClientName = "generic") {
       secret_storage: "~/.google-health-mcp/config.json or GOOGLE_HEALTH_* environment variables; never print secrets"
     },
     recommended_first_calls: [
+      "google_health_quickstart",
+      "google_health_demo",
       "google_health_connection_status",
-      "google_health_data_inventory",
-      "google_health_get_identity",
-      "google_health_daily_summary",
-      "google_health_weekly_summary"
+      "google_health_wellness_context",
+      "google_health_daily_summary"
     ],
     standard_tools: STANDARD_TOOLS,
     resources: RESOURCES,

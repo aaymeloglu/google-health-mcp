@@ -86,6 +86,120 @@ export function registerGoogleHealthTools(server: McpServer): void {
     }));
   });
 
+  server.registerTool("google_health_quickstart", {
+    title: "Google Health Quickstart",
+    description: "Personalized 3-step setup walkthrough for the human user. Adapts to current state (env vars set? token present? what's next?). Call this first when the user asks 'how do I connect Google Health?'",
+    inputSchema: ResponseOnlyInputSchema.shape,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }, async ({ response_format }) => {
+    const status = await buildConnectionStatus();
+    const hasEnv = status.missing_env.length === 0;
+    const hasToken = status.ready_for_google_health_api;
+    const steps = [
+      {
+        step: 1,
+        title: hasEnv ? "(done) Google Cloud OAuth client configured" : "Create a Google Cloud OAuth client and enable Google Health API v4",
+        action: hasEnv
+          ? "GOOGLE_HEALTH_CLIENT_ID, GOOGLE_HEALTH_CLIENT_SECRET, GOOGLE_HEALTH_REDIRECT_URI are all set."
+          : `Open https://console.cloud.google.com/apis/library/health.googleapis.com to enable the API, create an OAuth 2.0 client (type: Desktop), register a redirect URI (use ${status.redirect_uri ?? "http://127.0.0.1:3000/callback"}), then set: ${status.missing_env.join(", ")}.`,
+        done: hasEnv,
+      },
+      {
+        step: 2,
+        title: hasToken ? "(done) Local token present — ready to read Google Health data" : "Run the OAuth dance",
+        action: hasToken
+          ? "Tokens stored under ~/.google-health-mcp/tokens.json. The connector will refresh automatically when needed."
+          : "Run `google-health-mcp-server auth` (or call google_health_get_auth_url + google_health_exchange_code from the agent). Open the URL, grant access, paste the code.",
+        done: hasToken,
+      },
+      {
+        step: 3,
+        title: "Verify with the agent",
+        action: "Call google_health_connection_status, then google_health_daily_summary or google_health_wellness_context. Pair with wellness-nourish for sleep-aware meal coaching.",
+        example: hasToken
+          ? "google_health_wellness_context() → sleep + activity load handoff for nourish/cycle-coach."
+          : "Until step 2 is done, the data tools will surface a clear 'auth required' message.",
+        done: false,
+      },
+    ];
+    const payload = {
+      ok: true,
+      ready: hasEnv && hasToken,
+      steps,
+      next: steps.find((s) => !s.done) ?? steps[steps.length - 1],
+      migration_note: "Fitbit accounts are migrating to Google Health Connect. If you previously used fitbit-mcp-unofficial and now own a Pixel Watch (or installed Google Health Connect on Android), google-health-mcp-unofficial is the forward-looking connector — your tokens are different but the data domains overlap.",
+      cross_connector_hints: [
+        "Pair Google Health sleep + steps with wellness-nourish for sleep-aware meal coaching.",
+        "Pair Google Health HRV with wellness-cycle-coach for late-luteal load adjustments.",
+        "Pair Google Health resting heart rate with wellness-cgm-mcp glucose for metabolic-stress signals.",
+      ],
+    };
+    const markdown = bulletList("Google Health Quickstart", {
+      ready: payload.ready,
+      next: payload.next.title,
+      migration: "Fitbit -> Google Health Connect migration: this connector is the forward path for Pixel Watch + Android.",
+    });
+    return makeResponse(payload, response_format, markdown);
+  });
+
+  server.registerTool("google_health_demo", {
+    title: "Google Health Demo",
+    description: "Returns realistic Pixel-Watch-style example payloads of google_health_daily_summary, google_health_wellness_context, and google_health_daily_rollup so agents see the contract before calling real Google Health APIs.",
+    inputSchema: ResponseOnlyInputSchema.shape,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }, async ({ response_format }) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const payload = {
+      ok: true,
+      is_demo: true,
+      sample: {
+        google_health_daily_summary: {
+          date: today,
+          source: "Pixel Watch 3",
+          activity: { steps: 9180, active_minutes: 44, calories_out: 2410, distance_km: 7.1, floors_climbed: 14 },
+          sleep: { score: 81, duration_min: 458, efficiency: 93, stages: { rem_min: 94, deep_min: 71, light_min: 252, awake_min: 41 } },
+          heart: { resting_heart_rate: 54, hrv_rmssd_ms: 46, max_heart_rate: 158 },
+          body: { weight_kg: 76.2, body_fat_pct: 18.4 },
+        },
+        google_health_wellness_context: {
+          window: "last_24h",
+          sleep_score: 81,
+          sleep_duration_min: 458,
+          steps: 9180,
+          resting_heart_rate: 54,
+          hrv_ms: 46,
+          activity_load: "moderate",
+          recommendation: "Strong overnight recovery — sleep score 81 with HRV trending up from 7-day baseline. Green light for a moderate-to-hard session today. Front-load carbs around the workout window.",
+        },
+        google_health_daily_rollup: {
+          date: today,
+          data_source_family: "users/me/dataSourceFamilies/google-wearables",
+          rollups: {
+            "com.google.step_count.delta": { value: 9180, unit: "count" },
+            "com.google.heart_rate.bpm": { resting: 54, max: 158, avg: 71 },
+            "com.google.sleep.segment": { total_min: 458, efficiency_pct: 93 },
+            "com.google.active_minutes": { value: 44, unit: "minutes" },
+            "com.google.calories.expended": { value: 2410, unit: "kcal" },
+          },
+        },
+      },
+      notes: [
+        "All sample data is synthetic; tagged with is_demo=true.",
+        "Real calls return live data from Google Health API v4 after Google Cloud OAuth setup.",
+        "Google Health API v4 is in beta; field names and shapes may shift before stable launch.",
+      ],
+    };
+    const markdown = bulletList("Google Health Demo", {
+      is_demo: true,
+      steps: 9180,
+      sleep_score: 81,
+      resting_heart_rate: 54,
+      hrv_ms: 46,
+      recommendation: payload.sample.google_health_wellness_context.recommendation,
+    });
+    return makeResponse(payload, response_format, markdown);
+  });
+
   server.registerTool("google_health_get_auth_url", {
     title: "Get Google Health OAuth URL",
     description: "Generate a Google OAuth authorization URL for Google Health API. Use this first when no local token exists.",
