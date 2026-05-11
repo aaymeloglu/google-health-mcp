@@ -27,7 +27,10 @@ const STANDARD_TOOLS = [
   "google_health_get_profile",
   "google_health_get_settings",
   "google_health_list_data_points",
+  "google_health_onboarding",
   "google_health_privacy_audit",
+  "google_health_profile_get",
+  "google_health_profile_update",
   "google_health_quickstart",
   "google_health_reconcile_data_points",
   "google_health_revoke_access",
@@ -73,6 +76,7 @@ export function buildAgentManifest(client: AgentClientName = "generic") {
       secret_storage: "~/.google-health-mcp/config.json or GOOGLE_HEALTH_* environment variables; never print secrets"
     },
     recommended_first_calls: [
+      "google_health_profile_get",
       "google_health_quickstart",
       "google_health_demo",
       "google_health_connection_status",

@@ -4,9 +4,17 @@ import { SERVER_VERSION } from "../constants.js";
 import { parseAgentClientName } from "../services/agent-manifest.js";
 import { fixLocalSetup } from "../services/local-fixes.js";
 import { runLiveCheck, type LiveCheckResult } from "../services/live-check.js";
+import {
+  buildProfileSummary,
+  getOnboardingFlow,
+  getProfile,
+  missingCriticalFields
+} from "../services/profile-store.js";
 import { buildSupportReport, formatSupportReport } from "../services/support-report.js";
 import { runAuthCommand } from "./auth.js";
 import { runSetupCommand } from "./setup.js";
+
+const COMMANDS = ["setup", "doctor", "status", "support", "auth", "onboarding", "version", "help"] as const;
 
 export async function runCliCommand(args: string[]): Promise<number | undefined> {
   const [command, ...rest] = args;
@@ -15,6 +23,7 @@ export async function runCliCommand(args: string[]): Promise<number | undefined>
   if (command === "doctor" || command === "status") return runDoctor(rest);
   if (command === "support") return runSupport(rest);
   if (command === "auth") return runAuthCommand(rest);
+  if (command === "onboarding") return runOnboarding(rest);
   if (command === "version" || command === "--version" || command === "-v") {
     console.log(SERVER_VERSION);
     return 0;
@@ -30,6 +39,36 @@ export async function runCliCommand(args: string[]): Promise<number | undefined>
   }
   return undefined;
 }
+
+async function runOnboarding(args: string[]): Promise<number> {
+  const locale = args.includes("--pt-BR") || args.includes("--pt-br") ? "pt-BR" : "en";
+  const flow = getOnboardingFlow(locale);
+  const profile = await getProfile();
+  const payload = {
+    ok: true,
+    flow,
+    current_profile: profile,
+    missing_critical: missingCriticalFields(profile),
+    summary: buildProfileSummary(profile),
+    cross_connector_hint:
+      "This profile is shared across every Delx Wellness MCP connector (whoop, garmin, oura, fitbit, strava, polar, withings, apple-health, samsung-health, google-health, nourish, cycle-coach, cgm, air)."
+  };
+  process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+  if (process.stderr.isTTY) {
+    process.stderr.write(`\n# Delx Wellness Onboarding (${flow.locale})\n`);
+    process.stderr.write(`Storage: ${flow.storage_path}\n`);
+    process.stderr.write(`Profile summary: ${payload.summary}\n`);
+    process.stderr.write(`Missing critical: ${payload.missing_critical.join(", ") || "none"}\n`);
+    process.stderr.write(`\n${flow.privacy_note}\n\nQuestions:\n`);
+    for (const q of flow.questions) {
+      process.stderr.write(`  - [${q.category}${q.required ? "*" : ""}] ${q.prompt}\n`);
+    }
+    process.stderr.write(`\n${payload.cross_connector_hint}\n`);
+  }
+  return 0;
+}
+
+export { COMMANDS };
 
 async function runSupport(args: string[]): Promise<number> {
   const options = parseSupportOptions(args);
@@ -202,6 +241,8 @@ Usage:
   google-health-mcp-server support --json  Print redacted support bundle as JSON
   google-health-mcp-server auth            Authorize Google Health with local browser callback
   google-health-mcp-server auth --no-open  Print auth URL without opening browser
+  google-health-mcp-server onboarding      Print the shared Delx Wellness onboarding flow as JSON (+ TTY summary on stderr)
+  google-health-mcp-server onboarding --pt-BR  Onboarding flow in Brazilian Portuguese
 
 Required env:
   GOOGLE_HEALTH_CLIENT_ID

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 - 2026-05-11
+
+- Add shared Delx Wellness profile support. Vendored copy of the canonical `profile-store` (delx-wellness commit ab83d1a) at `src/services/profile-store.ts` reads and writes `~/.delx-wellness/profile.json` — a single source of truth for preferred name, goals, devices, training/nutrition/exercise/agent preferences and safety flags shared across every Delx Wellness MCP connector.
+- Add `google_health_profile_get` — read-only return of the current shared profile plus a summary and missing-critical fields.
+- Add `google_health_profile_update` — partial-patch writer. Requires `explicit_user_intent=true` (otherwise returns USER_ACTION_REQUIRED). Rejects secret-like fields at write time.
+- Add `google_health_onboarding` — read-only 11-question onboarding flow (en / pt-BR) plus current profile state and cross-connector hint.
+- Add `google-health-mcp-server onboarding` CLI command — emits flow JSON to stdout and a TTY-gated Markdown summary to stderr.
+- `recommended_first_calls` on the agent manifest now leads with `google_health_profile_get`.
+- Tool count: 21 → 24.
+
 ## 0.3.0 - 2026-05-11
 
 - Add `google_health_quickstart` tool — personalized 3-step setup walkthrough adapted to current state (Google Cloud OAuth client configured? token present? what's next?). Calls out the Fitbit-to-Google-Health migration path and returns cross-connector hints to pair with wellness-nourish, wellness-cycle-coach, and wellness-cgm-mcp.
