@@ -9,6 +9,7 @@ import {
 } from "../constants.js";
 import type { GoogleHealthConfig, GoogleHealthTokenSet } from "../types.js";
 import { disabledCacheStatus, GoogleHealthCache, type CacheStatus } from "./cache.js";
+import { fetchWithCache, getCacheStats } from "./http-cache.js";
 import { fetchWithRetry } from "./http-retry.js";
 import { redactErrorMessage } from "./redaction.js";
 import { TokenStore } from "./token-store.js";
@@ -150,8 +151,17 @@ export class GoogleHealthClient {
   }
 
   cacheStatus(): CacheStatus {
-    if (!this.config.cacheEnabled) return disabledCacheStatus(this.config.cachePath);
-    return this.getCache().status();
+    const httpStats = getCacheStats();
+    const http_cache = {
+      size: httpStats.size,
+      hit_count: httpStats.hit_count,
+      miss_count: httpStats.miss_count,
+      hit_rate: httpStats.hit_rate,
+      default_ttl_seconds: 60,
+      bypass_env_var: "GOOGLE_HEALTH_NO_CACHE"
+    };
+    if (!this.config.cacheEnabled) return { ...disabledCacheStatus(this.config.cachePath), http_cache };
+    return { ...this.getCache().status(), http_cache };
   }
 
   private extractCode(input: string): string {
@@ -305,7 +315,11 @@ export class GoogleHealthClient {
   }
 
   private async fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
-    return fetchWithRetry(url, init);
+    return fetchWithCache(url, init, {
+      defaultTtlSeconds: 60,
+      envVarBypass: "GOOGLE_HEALTH_NO_CACHE",
+      innerFetch: (u, i) => fetchWithRetry(u, i ?? {})
+    });
   }
 }
 
