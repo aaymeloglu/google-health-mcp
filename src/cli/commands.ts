@@ -10,7 +10,7 @@ import {
   getProfile,
   missingCriticalFields
 } from "../services/profile-store.js";
-import { buildSupportReport, formatSupportReport } from "../services/support-report.js";
+import { buildSupportReport } from "../services/support-report.js";
 import { runAuthCommand } from "./auth.js";
 import { runSetupCommand } from "./setup.js";
 
@@ -73,8 +73,9 @@ export { COMMANDS };
 async function runSupport(args: string[]): Promise<number> {
   const options = parseSupportOptions(args);
   const report = await buildSupportReport({ homeDir: options.homeDir, client: options.client });
-  if (options.json) console.log(JSON.stringify(report, null, 2));
-  else console.log(formatSupportReport(report));
+  const safeReport = safeSupportReport(report);
+  if (options.json) console.log(JSON.stringify(safeReport, null, 2));
+  else console.log(formatSafeSupportReport(safeReport));
   return 0;
 }
 
@@ -108,9 +109,9 @@ async function runDoctor(args: string[]): Promise<number> {
 function printLiveCheck(liveCheck: LiveCheckResult): void {
   const ok = "✓";
   const fail = "✗";
-  const line = (mark: string, label: string, detail?: string) => {
+  const line = (mark: string, label: string, _detail?: string) => {
     const labelCol = label.padEnd(28);
-    console.log(`  ${mark}  ${labelCol}${detail ? `  ${detail}` : ""}`);
+    console.log(`  ${mark}  ${labelCol}`);
   };
   console.log("");
   console.log("Live Google Health API");
@@ -197,9 +198,6 @@ function safeDoctorStatus(status: Awaited<ReturnType<typeof buildConnectionStatu
       has_refresh_token: raw.token.has_refresh_token,
       has_di_token: raw.token.has_di_token
     } : undefined,
-    oauth: raw.oauth ? {
-      scope_status: raw.oauth.scope_status
-    } : undefined,
     cache: raw.cache ? {
       enabled: Boolean(raw.cache.enabled)
     } : undefined,
@@ -208,14 +206,54 @@ function safeDoctorStatus(status: Awaited<ReturnType<typeof buildConnectionStatu
   };
 }
 
+function safeSupportReport(report: Awaited<ReturnType<typeof buildSupportReport>>): Record<string, unknown> {
+  const safeReport = {
+    redacted: true,
+    package: report.package,
+    runtime: report.runtime,
+    config: {
+      source: report.config.source,
+      required_env: report.config.required_env,
+      missing_env: report.config.missing_env,
+      automatic_auth_supported: report.config.automatic_auth_supported,
+      privacy_mode: report.config.privacy_mode,
+      cache_enabled: report.config.cache_enabled
+    },
+    token: {
+      exists: report.token.exists,
+      readable: report.token.readable,
+      secure_permissions: report.token.secure_permissions,
+      expired: report.token.expired,
+      has_refresh_token: report.token.has_refresh_token
+    },
+    next_steps: report.next_steps
+  };
+  return {
+    ...safeReport,
+    issue_body: formatSafeSupportReport(safeReport)
+  };
+}
+
+function formatSafeSupportReport(report: Record<string, unknown>): string {
+  return [
+    "## Google Health MCP support bundle",
+    "",
+    "This bundle is redacted. It should not contain OAuth tokens, client secrets, or health measurements.",
+    "",
+    "```json",
+    JSON.stringify(report, null, 2),
+    "```"
+  ].join("\n");
+}
+
 function printDoctor(status: Awaited<ReturnType<typeof buildConnectionStatus>>): void {
   const ok = "✓";
   const fail = "✗";
   const info = "·";
   const check = (passed: boolean) => (passed ? ok : fail);
-  const line = (mark: string, label: string, detail?: string) => {
+  const line = (mark: string, label: string, _detail?: string) => {
     const labelCol = label.padEnd(28);
-    console.log(`  ${mark}  ${labelCol}${detail ? `  ${detail}` : ""}`);
+    console.log(`  ${mark}  ${labelCol}`);
   };
 
   console.log("Google Health MCP · Doctor");
@@ -233,7 +271,7 @@ function printDoctor(status: Awaited<ReturnType<typeof buildConnectionStatus>>):
     line(check(Boolean(status.token.has_refresh_token)), "Refresh token", status.token.has_refresh_token ? undefined : "missing");
   }
   const scopesOk = status.oauth.scope_status === "ok" || status.oauth.missing_recommended_scopes.length === 0;
-  line(scopesOk ? ok : fail, "OAuth scopes", status.oauth.scope_status);
+  line(scopesOk ? ok : fail, "OAuth scopes");
   line(info, "Privacy mode", status.privacy_mode);
   line(status.cache.enabled ? ok : info, "Cache", status.cache.enabled ? "enabled" : "disabled");
   if (status.client_checks?.hermes) {
