@@ -1,4 +1,7 @@
-import { type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
+import type { GoogleHealthClient } from "./google-health-client.js";
+import { fromReconciledSleep, type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface SleepConfig {
   reclassify_isolated_light: boolean;
@@ -99,4 +102,113 @@ export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEF
 
   const metrics = computeFromRuns(toRuns(night.segments), config);
   return { date: night.date, ...metrics, stages_available: true, google_summary };
+}
+
+export interface SleepParams {
+  date?: string;
+  start?: string;
+  end?: string;
+  config?: Partial<SleepConfig>;
+}
+
+function dateString(daysAgo = 0): string {
+  return new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10);
+}
+
+function normalizeDate(value?: string): string {
+  return !value || value === "today" ? dateString(0) : value;
+}
+
+function addDays(date: string, days: number): string {
+  const v = new Date(`${date}T00:00:00Z`);
+  v.setUTCDate(v.getUTCDate() + days);
+  return v.toISOString().slice(0, 10);
+}
+
+function eachDate(start: string, end: string): string[] {
+  const out: string[] = [];
+  let d = start;
+  for (let i = 0; i < 366 && d <= end; i++) { out.push(d); d = addDays(d, 1); }
+  return out;
+}
+
+async function safeReconcile(
+  client: Pick<GoogleHealthClient, "reconcileDataPoints">,
+  date: string
+): Promise<unknown> {
+  const endDate = addDays(date, 1);
+  try {
+    return await client.reconcileDataPoints({
+      dataType: "sleep",
+      filter: `sleep.interval.civil_start_time >= "${date}" AND sleep.interval.civil_start_time < "${endDate}"`,
+      pageSize: 25,
+      dataSourceFamily: "users/me/dataSourceFamilies/google-wearables"
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export async function buildSleep(
+  client: Pick<GoogleHealthClient, "reconcileDataPoints">,
+  params: SleepParams
+) {
+  const start = params.start ? normalizeDate(params.start) : normalizeDate(params.date);
+  const end = params.end ? normalizeDate(params.end) : start;
+  const config: SleepConfig = { ...DEFAULT_SLEEP_CONFIG, ...(params.config ?? {}) };
+
+  const payloads = await Promise.all(eachDate(start, end).map((d) => safeReconcile(client, d)));
+  const nights = payloads
+    .flatMap((payload) => fromReconciledSleep(payload))
+    .map((night) => computeNightMetrics(night, config));
+
+  const withStages = nights.filter((n) => n.stages_available).length;
+  return {
+    kind: "sleep" as const,
+    generated_at: new Date().toISOString(),
+    source: "google_health",
+    window: { start, end },
+    beta: true,
+    data_quality: {
+      nights: nights.length,
+      nights_with_stages: withStages,
+      confidence: nights.length === 0 ? "low" : withStages >= Math.ceil(nights.length / 2) ? "medium" : "low"
+    },
+    config,
+    nights,
+    safety: {
+      medical_advice: false,
+      api_boundary:
+        "Minutes asleep are computed from Google Health v4 stage segments; google_summary echoes Google's reported figure for reference."
+    }
+  };
+}
+
+export function formatSleepMarkdown(result: Awaited<ReturnType<typeof buildSleep>>): string {
+  const hm = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+  const lines = [
+    "# Google Health Sleep",
+    "",
+    `Generated: ${result.generated_at}`,
+    `Window: ${result.window.start} → ${result.window.end}`,
+    `Nights: ${result.data_quality.nights} (with stages: ${result.data_quality.nights_with_stages})`,
+    ""
+  ];
+  for (const n of result.nights) {
+    lines.push(`## ${n.date}`);
+    lines.push(`- **asleep**: ${hm(n.minutes_asleep)} (${n.minutes_asleep} min)`);
+    if (n.stages_available) {
+      lines.push(`- **stages**: deep ${n.minutes_by_stage.deep} / light ${n.minutes_by_stage.light} / rem ${n.minutes_by_stage.rem} min`);
+      lines.push(`- **awake in bed**: ${n.minutes_awake_in_bed} min`);
+      lines.push(`- **efficiency**: ${n.efficiency}%`);
+    } else {
+      lines.push("- _no stage data; showing Google's reported summary_");
+    }
+    if (n.google_summary?.minutes_asleep !== undefined) {
+      lines.push(`- **google reported**: ${n.google_summary.minutes_asleep} min`);
+    }
+    lines.push("");
+  }
+  lines.push("> Not medical advice.");
+  return lines.join("\n");
 }
