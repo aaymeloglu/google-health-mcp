@@ -48,7 +48,8 @@
     "test:v4-nutrition": "node scripts/v4-nutrition-mapping-test.mjs",
     "test:sleep-normalize": "node scripts/sleep-normalize-test.mjs",
     "test:sleep-engine": "node scripts/sleep-engine-test.mjs",
-    "test:sleep": "node scripts/sleep-fixture-test.mjs"
+    "test:sleep": "node scripts/sleep-fixture-test.mjs",
+    "charts": "node scripts/charts/build-charts.mjs"
   },
   "keywords": [
     "mcp",
