@@ -60,7 +60,11 @@ export class GoogleHealthClient {
       response_type: "code",
       scope: (scopes?.length ? scopes : this.config.scopes).join(" "),
       access_type: "offline",
-      include_granted_scopes: "true",
+      // Must stay false: health.googleapis.com rejects any access token that also
+      // carries non-health scopes ("disallowed OAuth scope(s)"). When the OAuth client
+      // is shared with other Google APIs (Gmail/Drive/Calendar), include_granted_scopes=true
+      // would merge those grants into the token and every Health call would 403.
+      include_granted_scopes: "false",
       prompt: "consent"
     });
     if (state) params.set("state", state);

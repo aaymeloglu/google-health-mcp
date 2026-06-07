@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fromReconciledSleep, normalizeStage } from '../dist/services/sleep-normalize.js';
+import { fromSleepDataPoints, normalizeStage } from '../dist/services/sleep-normalize.js';
 
 // stage label normalization
 assert.equal(normalizeStage('DEEP'), 'deep');
@@ -22,7 +22,7 @@ const payload = {
     }
   }]
 };
-const nights = fromReconciledSleep(payload);
+const nights = fromSleepDataPoints(payload);
 assert.equal(nights.length, 1);
 assert.equal(nights[0].date, '2026-06-01');
 assert.equal(nights[0].stagesAvailable, true);
@@ -32,7 +32,7 @@ assert.equal(nights[0].segments[1].seconds, 180);
 assert.equal(nights[0].googleSummary.minutesAsleep, 7);
 
 // summary-only record (no stages) → stagesAvailable false
-const summaryOnly = fromReconciledSleep({
+const summaryOnly = fromSleepDataPoints({
   dataPoints: [{ sleep: { interval: { civilStartTime: '2026-06-02T23:00:00Z' }, summary: { minutesAsleep: 430 } } }]
 });
 assert.equal(summaryOnly[0].stagesAvailable, false);
@@ -40,11 +40,23 @@ assert.equal(summaryOnly[0].segments.length, 0);
 assert.equal(summaryOnly[0].googleSummary.minutesAsleep, 430);
 
 // duration derived from start/end when seconds absent
-const derived = fromReconciledSleep({
+const derived = fromSleepDataPoints({
   dataPoints: [{ sleep: { stages: [
     { level: 'rem', dateTime: '2026-06-03T01:00:00Z', endTime: '2026-06-03T01:30:00Z' }
   ] } }]
 });
 assert.equal(derived[0].segments[0].seconds, 1800);
+
+// offset-aware night date: 04:56Z with -5h offset → local night of the prior day
+const offset = fromSleepDataPoints({
+  dataPoints: [{ sleep: {
+    interval: { startTime: '2026-06-07T04:56:00Z', startUtcOffset: '-18000s' },
+    summary: { minutesAsleep: '509', minutesInSleepPeriod: '519' },
+    stages: [{ type: 'DEEP', startTime: '2026-06-07T04:56:00Z', endTime: '2026-06-07T05:56:00Z' }]
+  } }]
+});
+assert.equal(offset[0].date, '2026-06-06');          // not the UTC 2026-06-07
+assert.equal(offset[0].googleSummary.minutesAsleep, 509);
+assert.equal(offset[0].googleSummary.efficiency, 98.1);  // 509/519
 
 console.log(JSON.stringify({ ok: true, nights: nights.length }, null, 2));

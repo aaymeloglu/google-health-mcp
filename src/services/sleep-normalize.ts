@@ -95,11 +95,25 @@ function toSegment(raw: UnknownRecord): StageSegment | null {
 
 function summaryOf(sleep: UnknownRecord): SleepNight["googleSummary"] {
   const summary = isObject(sleep.summary) ? sleep.summary : sleep;
+  const minutesAsleep = pickNumber(summary, ["minutesAsleep"]);
+  const period = pickNumber(summary, ["minutesInSleepPeriod"]);
+  // The v4 summary has no explicit efficiency; derive Google's from asleep / sleep-period.
+  let efficiency = pickNumber(summary, ["efficiency"]);
+  if (efficiency === undefined && minutesAsleep !== undefined && period && period > 0) {
+    efficiency = Math.round((minutesAsleep / period) * 1000) / 10;
+  }
   return {
-    minutesAsleep: pickNumber(summary, ["minutesAsleep", "minutesInSleepPeriod"]),
+    minutesAsleep: minutesAsleep ?? pickNumber(summary, ["minutesInSleepPeriod"]),
     minutesAwake: pickNumber(summary, ["minutesAwake"]),
-    efficiency: pickNumber(summary, ["efficiency"])
+    efficiency
   };
+}
+
+// Offset like "-18000s" → seconds (-18000). Used to resolve the local "night of" date.
+function offsetSeconds(raw: unknown): number {
+  if (typeof raw !== "string") return 0;
+  const n = Number(raw.replace(/s$/, ""));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function nightDate(sleep: UnknownRecord, segments: StageSegment[]): string {
@@ -108,10 +122,15 @@ function nightDate(sleep: UnknownRecord, segments: StageSegment[]): string {
     (interval && pickString(interval, ["civilStartTime", "startTime", "start"])) ??
     pickString(sleep, ["startTime", "start", "dateOfSleep"]) ??
     segments[0]?.start;
-  return start ? start.slice(0, 10) : "unknown";
+  if (!start) return "unknown";
+  // Apply the wearable's UTC offset so a sleep that began at 23:56 local (04:56Z) is
+  // labelled the evening it started, not the UTC morning-after.
+  const offSec = interval ? offsetSeconds(interval.startUtcOffset) : 0;
+  const localMs = Date.parse(start) + offSec * 1000;
+  return Number.isFinite(localMs) ? new Date(localMs).toISOString().slice(0, 10) : start.slice(0, 10);
 }
 
-export function fromReconciledSleep(payload: unknown): SleepNight[] {
+export function fromSleepDataPoints(payload: unknown): SleepNight[] {
   if (!isObject(payload) || !Array.isArray(payload.dataPoints)) return [];
   const nights: SleepNight[] = [];
   for (const point of payload.dataPoints) {

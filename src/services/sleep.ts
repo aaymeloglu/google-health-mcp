@@ -1,5 +1,5 @@
 import type { GoogleHealthClient } from "./google-health-client.js";
-import { fromReconciledSleep, type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
+import { fromSleepDataPoints, type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -111,6 +111,13 @@ export interface SleepParams {
   config?: Partial<SleepConfig>;
 }
 
+const SLEEP_PAGE_SIZE = 50;
+const SLEEP_MAX_PAGES = 40; // safety cap (~2000 nights)
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function dateString(daysAgo = 0): string {
   return new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10);
 }
@@ -119,48 +126,61 @@ function normalizeDate(value?: string): string {
   return !value || value === "today" ? dateString(0) : value;
 }
 
-function addDays(date: string, days: number): string {
-  const v = new Date(`${date}T00:00:00Z`);
-  v.setUTCDate(v.getUTCDate() + days);
-  return v.toISOString().slice(0, 10);
-}
-
-function eachDate(start: string, end: string): string[] {
-  const out: string[] = [];
-  let d = start;
-  for (let i = 0; i < 366 && d <= end; i++) { out.push(d); d = addDays(d, 1); }
+// The v4 sleep filter DSL rejects every interval member path we can form
+// (INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER), so we list newest-first and
+// page until we've covered the requested range, then filter by local night date
+// client-side. This is the reliable contract for the sleep (Session) data type.
+async function collectSleepNights(
+  client: Pick<GoogleHealthClient, "listDataPoints">,
+  keep: (night: SleepNight) => boolean,
+  stopWhenBefore?: string
+): Promise<SleepNight[]> {
+  const out: SleepNight[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < SLEEP_MAX_PAGES; page++) {
+    let payload: unknown;
+    try {
+      payload = await client.listDataPoints({ dataType: "sleep", pageSize: SLEEP_PAGE_SIZE, pageToken });
+    } catch {
+      break;
+    }
+    const nights = fromSleepDataPoints(payload);
+    let passedRange = false;
+    for (const night of nights) {
+      if (keep(night)) out.push(night);
+      if (stopWhenBefore && night.date < stopWhenBefore) passedRange = true;
+    }
+    pageToken = isObject(payload) && typeof payload.nextPageToken === "string" ? payload.nextPageToken : undefined;
+    if (!pageToken || passedRange) break;
+  }
   return out;
 }
 
-async function safeReconcile(
-  client: Pick<GoogleHealthClient, "reconcileDataPoints">,
-  date: string
-): Promise<unknown> {
-  const endDate = addDays(date, 1);
-  try {
-    return await client.reconcileDataPoints({
-      dataType: "sleep",
-      filter: `sleep.interval.civil_start_time >= "${date}" AND sleep.interval.civil_start_time < "${endDate}"`,
-      pageSize: 25,
-      dataSourceFamily: "users/me/dataSourceFamilies/google-wearables"
-    });
-  } catch {
-    return undefined;
-  }
-}
-
 export async function buildSleep(
-  client: Pick<GoogleHealthClient, "reconcileDataPoints">,
+  client: Pick<GoogleHealthClient, "listDataPoints">,
   params: SleepParams
 ) {
-  const start = params.start ? normalizeDate(params.start) : normalizeDate(params.date);
-  const end = params.end ? normalizeDate(params.end) : start;
   const config: SleepConfig = { ...DEFAULT_SLEEP_CONFIG, ...(params.config ?? {}) };
+  const hasRange = Boolean(params.date || params.start || params.end);
 
-  const payloads = await Promise.all(eachDate(start, end).map((d) => safeReconcile(client, d)));
-  const nights = payloads
-    .flatMap((payload) => fromReconciledSleep(payload))
-    .map((night) => computeNightMetrics(night, config));
+  let start: string;
+  let end: string;
+  let collected: SleepNight[];
+
+  if (!hasRange) {
+    // No window given → just the most recent night (the natural "how did I sleep?").
+    collected = (await collectSleepNights(client, () => true, undefined)).slice(0, 1);
+    start = collected[0]?.date ?? dateString(0);
+    end = start;
+  } else {
+    start = normalizeDate(params.start ?? params.date);
+    end = normalizeDate(params.end ?? params.date ?? params.start);
+    if (end < start) [start, end] = [end, start];
+    collected = await collectSleepNights(client, (n) => n.date >= start && n.date <= end, start);
+  }
+
+  collected.sort((a, b) => a.date.localeCompare(b.date)); // newest-first API → chronological
+  const nights = collected.map((night) => computeNightMetrics(night, config));
 
   const withStages = nights.filter((n) => n.stages_available).length;
   return {
