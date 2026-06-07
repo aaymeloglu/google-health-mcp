@@ -12,6 +12,7 @@ This repo is the unofficial Google Health MCP connector for local agent workflow
 - Fast smoke: `npm run smoke`
 - HTTP smoke: `npm run smoke:http`
 - Full gate: `npm test`
+- Charts: `npm run charts -- [startYYYY-MM-DD] [endYYYY-MM-DD]` → writes `~/.google-health-mcp/charts/health-charts.html` (needs build + a saved token; no personal data is committed)
 
 ## Rules
 
