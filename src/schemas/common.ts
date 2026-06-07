@@ -354,3 +354,26 @@ export type ExchangeCodeInput = z.infer<typeof ExchangeCodeInputSchema>;
 export type DailySummaryInput = z.infer<typeof DailySummaryInputSchema>;
 export type WellnessContextInput = z.infer<typeof WellnessContextInputSchema>;
 export type WeeklySummaryInput = z.infer<typeof WeeklySummaryInputSchema>;
+
+const OptionalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$|^today$/).optional();
+
+export const SleepConfigSchema = z.object({
+  reclassify_isolated_light: z.boolean(),
+  isolated_light_window_min: z.number().int().min(0).max(60),
+  trim_edges: z.boolean()
+}).partial().strict().optional();
+
+export const SleepInputSchema = z.object({
+  date: OptionalDateSchema.describe("Single night (YYYY-MM-DD or 'today'). Ignored if start/end given."),
+  start: OptionalDateSchema.describe("Range start (YYYY-MM-DD or 'today')."),
+  end: OptionalDateSchema.describe("Range end (YYYY-MM-DD or 'today')."),
+  config: SleepConfigSchema,
+  response_format: ResponseFormatSchema
+}).strict();
+
+export const SleepOutputSchema = z.object({
+  kind: z.literal("sleep"),
+  generated_at: z.string()
+}).passthrough();
+
+export type SleepInput = z.infer<typeof SleepInputSchema>;

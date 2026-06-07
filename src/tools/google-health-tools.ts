@@ -22,6 +22,8 @@ import {
   RevokeAccessOutputSchema,
   RollupInputSchema,
   SimpleReadInputSchema,
+  SleepInputSchema,
+  SleepOutputSchema,
   SummaryOutputSchema,
   WeeklySummaryInputSchema,
   WellnessContextInputSchema,
@@ -46,6 +48,7 @@ import {
   type WellnessProfileDocument
 } from "../services/profile-store.js";
 import { buildDailySummary, buildWeeklySummary, formatSummaryMarkdown } from "../services/summary.js";
+import { buildSleep, formatSleepMarkdown } from "../services/sleep.js";
 import { GoogleHealthClient } from "../services/google-health-client.js";
 
 function client(): GoogleHealthClient {
@@ -488,6 +491,21 @@ export function registerGoogleHealthTools(server: McpServer): void {
     try {
       const summary = await buildWeeklySummary(client(), params);
       return makeResponse(summary, params.response_format, formatSummaryMarkdown(summary));
+    } catch (error) {
+      return makeError((error as Error).message);
+    }
+  });
+
+  server.registerTool("google_health_sleep", {
+    title: "Google Health Sleep",
+    description: "Per-night sleep computed from Google Health v4 stage segments: minutes asleep (corrected for brief wake misclassified as light), per-stage minutes, awake-in-bed, efficiency, and the stage timeline. Accepts a single date or a start/end range. Read-only, beta, non-medical.",
+    inputSchema: SleepInputSchema.shape,
+    outputSchema: SleepOutputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  }, async (params) => {
+    try {
+      const result = await buildSleep(client(), params);
+      return makeResponse(result, params.response_format, formatSleepMarkdown(result));
     } catch (error) {
       return makeError((error as Error).message);
     }
