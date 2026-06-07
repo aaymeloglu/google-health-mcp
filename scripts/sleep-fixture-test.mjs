@@ -32,17 +32,20 @@ assert.equal(result.nights.length, 1);
 const n = result.nights[0];
 assert.equal(n.date, '2026-06-01');
 assert.equal(n.stages_available, true);
-assert.equal(n.minutes_asleep, 200);             // 100 deep + 100 rem; isolated 4m light → wake
-assert.equal(n.minutes_awake_in_bed, 24);
-assert.equal(n.google_summary.minutes_asleep, 204);  // Google's inflated figure, for reference
+assert.equal(n.minutes_asleep, 204);             // deep100 + light4 + rem100 (Google's definition)
+assert.equal(n.restorative_minutes, 200);        // deep100 + rem100
+assert.equal(n.light_minutes, 4);
+assert.equal(n.awake_in_bed, 20);
+assert.equal(n.long_light_blocks.length, 0);     // the 4m light run is below the 45m threshold
+assert.equal(n.google_summary.minutes_asleep, 204);
 
 const md = formatSleepMarkdown(result);
 assert.ok(md.includes('# Google Health Sleep'));
-assert.ok(md.includes('2026-06-01'));
+assert.ok(md.includes('restorative'));
 
 // no-args path returns the single most recent night
 const recent = await buildSleep(fakeClient, {});
 assert.equal(recent.nights.length, 1);
-assert.equal(recent.nights[0].minutes_asleep, 200);
+assert.equal(recent.nights[0].restorative_minutes, 200);
 
-console.log(JSON.stringify({ ok: true, asleep: n.minutes_asleep, google: n.google_summary.minutes_asleep }, null, 2));
+console.log(JSON.stringify({ ok: true, asleep: n.minutes_asleep, restorative: n.restorative_minutes }, null, 2));

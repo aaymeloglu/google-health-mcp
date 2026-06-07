@@ -1,42 +1,40 @@
 import assert from 'node:assert/strict';
-import { computeNightMetrics, DEFAULT_SLEEP_CONFIG } from '../dist/services/sleep.js';
+import { computeNightMetrics } from '../dist/services/sleep.js';
 
-const seg = (stage, minutes) => ({ start: '2026-06-01T00:00:00Z', end: '2026-06-01T00:00:00Z', stage, seconds: minutes * 60 });
-
-// Case 1: normal night, no isolated light → asleep = deep+light+rem
-const normal = {
-  date: '2026-06-01', stagesAvailable: true,
-  segments: [seg('light', 60), seg('deep', 90), seg('rem', 60), seg('light', 90)],
-  googleSummary: { minutesAsleep: 300, efficiency: 100 }
+// A night with a 60m light block (flagged) and a 30m light block (not flagged).
+const night = {
+  date: '2026-06-01',
+  utcOffsetSeconds: 0,
+  stagesAvailable: true,
+  segments: [
+    { start: '2026-06-01T00:00:00Z', end: '2026-06-01T01:30:00Z', stage: 'deep',  seconds: 5400 }, // 90m
+    { start: '2026-06-01T01:30:00Z', end: '2026-06-01T02:30:00Z', stage: 'light', seconds: 3600 }, // 60m → flag
+    { start: '2026-06-01T02:30:00Z', end: '2026-06-01T03:30:00Z', stage: 'rem',   seconds: 3600 }, // 60m
+    { start: '2026-06-01T03:30:00Z', end: '2026-06-01T03:40:00Z', stage: 'awake', seconds: 600 },  // 10m
+    { start: '2026-06-01T03:40:00Z', end: '2026-06-01T04:10:00Z', stage: 'light', seconds: 1800 }  // 30m → no flag
+  ],
+  googleSummary: { minutesAsleep: 240, efficiency: 96 }
 };
-const r1 = computeNightMetrics(normal, DEFAULT_SLEEP_CONFIG);
-assert.equal(r1.minutes_asleep, 300);
-assert.equal(r1.minutes_by_stage.deep, 90);
-assert.equal(r1.stages_available, true);
+const r = computeNightMetrics(night);
+assert.equal(r.minutes_asleep, 240);          // deep90 + light90 + rem60
+assert.equal(r.restorative_minutes, 150);     // deep90 + rem60
+assert.equal(r.light_minutes, 90);
+assert.equal(r.awake_in_bed, 10);
+assert.equal(r.time_in_bed, 250);
+assert.equal(r.efficiency, 96);               // 240/250
+assert.equal(r.restorative_pct, 62.5);        // 150/240
+assert.equal(r.long_light_blocks.length, 1);
+assert.deepEqual(r.long_light_blocks[0], { start: '01:30', end: '02:30', minutes: 60 });
 
-// Case 2: isolated 4m light bracketed by awake → reclassified to wake
-const isolated = {
-  date: '2026-06-02', stagesAvailable: true,
-  segments: [seg('deep', 100), seg('awake', 10), seg('light', 4), seg('awake', 10), seg('rem', 100)],
-  googleSummary: { minutesAsleep: 204 }
-};
-const r2 = computeNightMetrics(isolated, DEFAULT_SLEEP_CONFIG);
-assert.equal(r2.minutes_asleep, 200);          // 204 − 4 reclassified light
-assert.equal(r2.minutes_awake_in_bed, 24);     // 10 + 4 + 10
+// local-time blocks honor the wearable offset (−5h)
+const off = computeNightMetrics({ ...night, utcOffsetSeconds: -18000 });
+assert.equal(off.long_light_blocks[0].start, '20:30'); // 01:30Z − 5h
 
-// Case 3: reclassification + trim OFF reproduces Google's stage sum (parsing sanity)
-const r3 = computeNightMetrics(isolated, { reclassify_isolated_light: false, isolated_light_window_min: 5, trim_edges: false });
-assert.equal(r3.minutes_asleep, 204);
+// no-stages night → falls back to Google's number, restorative unknown, flagged
+const noStages = computeNightMetrics({ date: '2026-06-02', utcOffsetSeconds: 0, stagesAvailable: false, segments: [], googleSummary: { minutesAsleep: 430, efficiency: 88 } });
+assert.equal(noStages.minutes_asleep, 430);
+assert.equal(noStages.restorative_minutes, 0);
+assert.equal(noStages.stages_available, false);
+assert.equal(noStages.long_light_blocks.length, 0);
 
-// Case 4: no stages → falls back to google summary, flagged
-const noStages = { date: '2026-06-03', stagesAvailable: false, segments: [], googleSummary: { minutesAsleep: 430, efficiency: 88 } };
-const r4 = computeNightMetrics(noStages, DEFAULT_SLEEP_CONFIG);
-assert.equal(r4.minutes_asleep, 430);
-assert.equal(r4.stages_available, false);
-assert.equal(r4.google_summary.minutes_asleep, 430);
-
-// Case 5: all awake → 0 asleep
-const allWake = { date: '2026-06-04', stagesAvailable: true, segments: [seg('awake', 30)], googleSummary: {} };
-assert.equal(computeNightMetrics(allWake, DEFAULT_SLEEP_CONFIG).minutes_asleep, 0);
-
-console.log(JSON.stringify({ ok: true }, null, 2));
+console.log(JSON.stringify({ ok: true, restorative_pct: r.restorative_pct }, null, 2));

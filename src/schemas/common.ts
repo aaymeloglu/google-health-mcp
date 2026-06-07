@@ -358,9 +358,8 @@ export type WeeklySummaryInput = z.infer<typeof WeeklySummaryInputSchema>;
 const OptionalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$|^today$/).optional();
 
 export const SleepConfigSchema = z.object({
-  reclassify_isolated_light: z.boolean(),
-  isolated_light_window_min: z.number().int().min(0).max(60),
-  trim_edges: z.boolean()
+  long_light_block_min: z.number().int().min(5).max(240)
+    .describe("Contiguous light-sleep runs at least this long are flagged as likely dozing.")
 }).partial().strict().optional();
 
 export const SleepInputSchema = z.object({

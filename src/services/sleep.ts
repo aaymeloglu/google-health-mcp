@@ -3,82 +3,63 @@ import { fromSleepDataPoints, type SleepNight, type SleepStage, type StageSegmen
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Transparency-first: the v4 API only exposes Google's own stage verdicts (deep/light/rem/awake),
+// not the raw accelerometer/PPG, so we do NOT invent a "corrected" minutes-asleep. Instead we
+// surface what Google's single number hides — restorative (deep+REM) vs light, plus the long
+// morning light blocks that read as "in and out" dozing — and echo Google's figure for reference.
+
 export interface SleepConfig {
-  reclassify_isolated_light: boolean;
-  isolated_light_window_min: number;
-  trim_edges: boolean;
+  // Contiguous LIGHT runs at least this long are flagged as likely fragmented/dozing.
+  long_light_block_min: number;
 }
 
 export const DEFAULT_SLEEP_CONFIG: SleepConfig = {
-  reclassify_isolated_light: true,
-  isolated_light_window_min: 5,
-  trim_edges: true
+  long_light_block_min: 45
 };
+
+export interface LightBlock {
+  start: string;   // local HH:MM
+  end: string;     // local HH:MM
+  minutes: number;
+}
 
 export interface SleepNightResult {
   date: string;
-  minutes_asleep: number;
-  minutes_by_stage: { deep: number; light: number; rem: number };
-  minutes_awake_in_bed: number;
   time_in_bed: number;
-  efficiency: number;
+  minutes_asleep: number;        // Google's definition: deep + light + rem
+  restorative_minutes: number;   // deep + rem
+  light_minutes: number;
+  awake_in_bed: number;
+  efficiency: number;            // asleep / in-bed, %
+  restorative_pct: number;       // restorative / asleep, %
   stages_available: boolean;
+  long_light_blocks: LightBlock[];
   google_summary?: { minutes_asleep?: number; efficiency?: number };
 }
 
-interface Run { stage: SleepStage; seconds: number; }
+interface TimedRun { stage: SleepStage; start: string; end: string; seconds: number; }
 
-function mergeRuns(runs: Run[]): Run[] {
-  const out: Run[] = [];
-  for (const run of runs) {
+function toTimedRuns(segments: StageSegment[]): TimedRun[] {
+  const out: TimedRun[] = [];
+  for (const seg of segments) {
     const last = out[out.length - 1];
-    if (last && last.stage === run.stage) last.seconds += run.seconds;
-    else out.push({ ...run });
+    if (last && last.stage === seg.stage) {
+      last.end = seg.end;
+      last.seconds += seg.seconds;
+    } else {
+      out.push({ stage: seg.stage, start: seg.start, end: seg.end, seconds: seg.seconds });
+    }
   }
   return out;
 }
 
-function toRuns(segments: StageSegment[]): Run[] {
-  return mergeRuns(segments.map((seg) => ({ stage: seg.stage, seconds: seg.seconds })));
+function localHHMM(iso: string, offsetSec: number): string {
+  const ms = Date.parse(iso) + offsetSec * 1000;
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(11, 16) : iso.slice(11, 16);
 }
 
-function applyReclassification(runs: Run[], config: SleepConfig): Run[] {
-  if (!config.reclassify_isolated_light) return runs;
-  const windowSec = config.isolated_light_window_min * 60;
-  const flipped: Run[] = runs.map((run, i) => {
-    if (run.stage !== "light" || run.seconds > windowSec) return run;
-    const prev = runs[i - 1];
-    const next = runs[i + 1];
-    const prevWake = !prev || prev.stage === "awake";   // record edge counts as wake
-    const nextWake = !next || next.stage === "awake";
-    return prevWake && nextWake ? { stage: "awake" as SleepStage, seconds: run.seconds } : run;
-  });
-  // flipping a LIGHT run to AWAKE can make it adjacent to existing AWAKE runs — re-merge.
-  return mergeRuns(flipped);
-}
-
-function computeFromRuns(runs: Run[], config: SleepConfig) {
-  const reclassified = applyReclassification(runs, config);
-  let startIdx = 0;
-  let endIdx = reclassified.length - 1;
-  if (config.trim_edges) {
-    while (startIdx <= endIdx && reclassified[startIdx].stage === "awake") startIdx++;
-    while (endIdx >= startIdx && reclassified[endIdx].stage === "awake") endIdx--;
-  }
-  const inBed = reclassified.slice(startIdx, endIdx + 1);
-  const sum = (stage: SleepStage) => inBed.filter((r) => r.stage === stage).reduce((s, r) => s + r.seconds, 0);
-  const deep = sum("deep"), light = sum("light"), rem = sum("rem"), awake = sum("awake");
-  const asleepSec = deep + light + rem;
-  const inBedSec = asleepSec + awake;
-  const toMin = (sec: number) => Math.round(sec / 60);
-  return {
-    minutes_asleep: toMin(asleepSec),
-    minutes_by_stage: { deep: toMin(deep), light: toMin(light), rem: toMin(rem) },
-    minutes_awake_in_bed: toMin(awake),
-    time_in_bed: toMin(inBedSec),
-    efficiency: inBedSec > 0 ? Math.round((asleepSec / inBedSec) * 1000) / 10 : 0
-  };
-}
+const toMin = (sec: number) => Math.round(sec / 60);
+const round1 = (x: number) => Math.round(x * 10) / 10;
 
 export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEFAULT_SLEEP_CONFIG): SleepNightResult {
   const google_summary = night.googleSummary
@@ -90,18 +71,43 @@ export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEF
     const awake = night.googleSummary?.minutesAwake ?? 0;
     return {
       date: night.date,
-      minutes_asleep: gm,
-      minutes_by_stage: { deep: 0, light: 0, rem: 0 },
-      minutes_awake_in_bed: awake,
       time_in_bed: gm + awake,
+      minutes_asleep: gm,
+      restorative_minutes: 0,
+      light_minutes: 0,
+      awake_in_bed: awake,
       efficiency: night.googleSummary?.efficiency ?? 0,
+      restorative_pct: 0,
       stages_available: false,
+      long_light_blocks: [],
       google_summary
     };
   }
 
-  const metrics = computeFromRuns(toRuns(night.segments), config);
-  return { date: night.date, ...metrics, stages_available: true, google_summary };
+  const runs = toTimedRuns(night.segments);
+  const total = (stage: SleepStage) => runs.filter((r) => r.stage === stage).reduce((s, r) => s + r.seconds, 0);
+  const deep = total("deep"), light = total("light"), rem = total("rem"), awake = total("awake");
+  const asleepSec = deep + light + rem;
+  const inBedSec = asleepSec + awake;
+  const off = night.utcOffsetSeconds ?? 0;
+
+  const long_light_blocks = runs
+    .filter((r) => r.stage === "light" && r.seconds >= config.long_light_block_min * 60)
+    .map((r) => ({ start: localHHMM(r.start, off), end: localHHMM(r.end, off), minutes: toMin(r.seconds) }));
+
+  return {
+    date: night.date,
+    time_in_bed: toMin(inBedSec),
+    minutes_asleep: toMin(asleepSec),
+    restorative_minutes: toMin(deep + rem),
+    light_minutes: toMin(light),
+    awake_in_bed: toMin(awake),
+    efficiency: inBedSec > 0 ? round1((asleepSec / inBedSec) * 100) : 0,
+    restorative_pct: asleepSec > 0 ? round1(((deep + rem) / asleepSec) * 100) : 0,
+    stages_available: true,
+    long_light_blocks,
+    google_summary
+  };
 }
 
 export interface SleepParams {
@@ -126,10 +132,9 @@ function normalizeDate(value?: string): string {
   return !value || value === "today" ? dateString(0) : value;
 }
 
-// The v4 sleep filter DSL rejects every interval member path we can form
-// (INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER), so we list newest-first and
-// page until we've covered the requested range, then filter by local night date
-// client-side. This is the reliable contract for the sleep (Session) data type.
+// The v4 sleep filter DSL rejects every interval member path we can form, so we list
+// newest-first and page until we've covered the requested range, then filter by local
+// wake date client-side. Reliable contract for the sleep (Session) data type.
 async function collectSleepNights(
   client: Pick<GoogleHealthClient, "listDataPoints">,
   keep: (night: SleepNight) => boolean,
@@ -156,6 +161,11 @@ async function collectSleepNights(
   return out;
 }
 
+function average(values: number[]): number | undefined {
+  if (!values.length) return undefined;
+  return round1(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
 export async function buildSleep(
   client: Pick<GoogleHealthClient, "listDataPoints">,
   params: SleepParams
@@ -168,7 +178,6 @@ export async function buildSleep(
   let collected: SleepNight[];
 
   if (!hasRange) {
-    // No window given → just the most recent night (the natural "how did I sleep?").
     collected = (await collectSleepNights(client, () => true, undefined)).slice(0, 1);
     start = collected[0]?.date ?? dateString(0);
     end = start;
@@ -181,8 +190,8 @@ export async function buildSleep(
 
   collected.sort((a, b) => a.date.localeCompare(b.date)); // newest-first API → chronological
   const nights = collected.map((night) => computeNightMetrics(night, config));
+  const staged = nights.filter((n) => n.stages_available);
 
-  const withStages = nights.filter((n) => n.stages_available).length;
   return {
     kind: "sleep" as const,
     generated_at: new Date().toISOString(),
@@ -191,44 +200,62 @@ export async function buildSleep(
     beta: true,
     data_quality: {
       nights: nights.length,
-      nights_with_stages: withStages,
-      confidence: nights.length === 0 ? "low" : withStages >= Math.ceil(nights.length / 2) ? "medium" : "low"
+      nights_with_stages: staged.length,
+      confidence: nights.length === 0 ? "low" : staged.length >= Math.ceil(nights.length / 2) ? "medium" : "low"
     },
+    aggregate: staged.length ? {
+      avg_minutes_asleep: average(staged.map((n) => n.minutes_asleep)),
+      avg_restorative_minutes: average(staged.map((n) => n.restorative_minutes)),
+      avg_restorative_pct: average(staged.map((n) => n.restorative_pct)),
+      avg_efficiency: average(staged.map((n) => n.efficiency))
+    } : undefined,
     config,
     nights,
+    interpretation: {
+      what_minutes_asleep_means: "Google's figure: deep + light + rem. The API exposes only Google's stage labels, not raw motion/PPG, so this is not independently re-derived.",
+      restorative: "deep + REM — the stages most associated with feeling rested.",
+      long_light_blocks: `Contiguous light-sleep runs >= ${config.long_light_block_min} min, often experienced as in-and-out/dozing rather than solid sleep.`
+    },
     safety: {
       medical_advice: false,
-      api_boundary:
-        "Minutes asleep are computed from Google Health v4 stage segments; google_summary echoes Google's reported figure for reference."
+      api_boundary: "Read-only Google Health v4 stage data; not a clinical sleep measure."
     }
   };
 }
 
 export function formatSleepMarkdown(result: Awaited<ReturnType<typeof buildSleep>>): string {
-  const hm = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+  const hm = (mins: number) => {
+    const m = Math.round(mins);
+    return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+  };
   const lines = [
     "# Google Health Sleep",
     "",
-    `Generated: ${result.generated_at}`,
-    `Window: ${result.window.start} → ${result.window.end}`,
-    `Nights: ${result.data_quality.nights} (with stages: ${result.data_quality.nights_with_stages})`,
+    `Window: ${result.window.start} → ${result.window.end} · nights: ${result.data_quality.nights} (with stages: ${result.data_quality.nights_with_stages})`,
     ""
   ];
+  if (result.aggregate) {
+    lines.push(
+      `**Averages** — asleep ${hm(result.aggregate.avg_minutes_asleep ?? 0)}, ` +
+      `restorative ${hm(result.aggregate.avg_restorative_minutes ?? 0)} (${result.aggregate.avg_restorative_pct ?? 0}%), ` +
+      `efficiency ${result.aggregate.avg_efficiency ?? 0}%`,
+      ""
+    );
+  }
   for (const n of result.nights) {
     lines.push(`## ${n.date}`);
-    lines.push(`- **asleep**: ${hm(n.minutes_asleep)} (${n.minutes_asleep} min)`);
     if (n.stages_available) {
-      lines.push(`- **stages**: deep ${n.minutes_by_stage.deep} / light ${n.minutes_by_stage.light} / rem ${n.minutes_by_stage.rem} min`);
-      lines.push(`- **awake in bed**: ${n.minutes_awake_in_bed} min`);
-      lines.push(`- **efficiency**: ${n.efficiency}%`);
+      lines.push(`- **asleep (Google)**: ${hm(n.minutes_asleep)} (${n.minutes_asleep} min) · efficiency ${n.efficiency}%`);
+      lines.push(`- **restorative (deep+REM)**: ${hm(n.restorative_minutes)} (${n.restorative_minutes} min, ${n.restorative_pct}% of asleep)`);
+      lines.push(`- **light**: ${hm(n.light_minutes)} · **awake in bed**: ${n.awake_in_bed} min`);
+      if (n.long_light_blocks.length) {
+        lines.push(`- **long light blocks**: ${n.long_light_blocks.map((b) => `${b.start}–${b.end} (${b.minutes}m)`).join(", ")}`);
+      }
     } else {
-      lines.push("- _no stage data; showing Google's reported summary_");
-    }
-    if (n.google_summary?.minutes_asleep !== undefined) {
-      lines.push(`- **google reported**: ${n.google_summary.minutes_asleep} min`);
+      lines.push(`- **asleep (Google)**: ${hm(n.minutes_asleep)} — _no stage data this night_`);
     }
     lines.push("");
   }
-  lines.push("> Not medical advice.");
+  lines.push("> Google's number is its own stage verdict, not independently re-derived. Not medical advice.");
   return lines.join("\n");
 }

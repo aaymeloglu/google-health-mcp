@@ -14,8 +14,9 @@ export interface StageSegment {
 }
 
 export interface SleepNight {
-  date: string;                 // night-of (YYYY-MM-DD)
-  segments: StageSegment[];     // ordered
+  date: string;                 // local wake date (YYYY-MM-DD)
+  segments: StageSegment[];     // ordered, UTC ISO timestamps
+  utcOffsetSeconds: number;     // wearable offset, for localizing segment clock times
   stagesAvailable: boolean;
   googleSummary?: { minutesAsleep?: number; minutesAwake?: number; efficiency?: number };
 }
@@ -148,9 +149,11 @@ export function fromSleepDataPoints(payload: unknown): SleepNight[] {
     const segments = segmentArray(sleep)
       .map(toSegment)
       .filter((s): s is StageSegment => s !== null);
+    const interval = isObject(sleep.interval) ? sleep.interval : undefined;
     nights.push({
       date: nightDate(sleep, segments),
       segments,
+      utcOffsetSeconds: offsetSeconds(interval?.startUtcOffset ?? interval?.endUtcOffset),
       stagesAvailable: segments.length > 0,
       googleSummary: summaryOf(sleep)
     });
