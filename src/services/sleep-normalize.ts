@@ -116,18 +116,27 @@ function offsetSeconds(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function localDate(time: string | undefined, offsetRaw: unknown): string | undefined {
+  if (!time) return undefined;
+  const localMs = Date.parse(time) + offsetSeconds(offsetRaw) * 1000;
+  return Number.isFinite(localMs) ? new Date(localMs).toISOString().slice(0, 10) : time.slice(0, 10);
+}
+
 function nightDate(sleep: UnknownRecord, segments: StageSegment[]): string {
   const interval = isObject(sleep.interval) ? sleep.interval : undefined;
+  // Match Fitbit/Google Health convention: a sleep is logged to the local date you WOKE UP
+  // (the end of the session), applying the wearable's UTC offset. Labelling by start time
+  // mis-files a sleep that began before midnight onto the prior day and collides two sessions.
+  const wake = localDate(
+    interval ? pickString(interval, ["endTime", "civilEndTime", "end"]) : undefined,
+    interval?.endUtcOffset
+  );
+  if (wake) return wake;
   const start =
-    (interval && pickString(interval, ["civilStartTime", "startTime", "start"])) ??
-    pickString(sleep, ["startTime", "start", "dateOfSleep"]) ??
-    segments[0]?.start;
-  if (!start) return "unknown";
-  // Apply the wearable's UTC offset so a sleep that began at 23:56 local (04:56Z) is
-  // labelled the evening it started, not the UTC morning-after.
-  const offSec = interval ? offsetSeconds(interval.startUtcOffset) : 0;
-  const localMs = Date.parse(start) + offSec * 1000;
-  return Number.isFinite(localMs) ? new Date(localMs).toISOString().slice(0, 10) : start.slice(0, 10);
+    localDate(interval ? pickString(interval, ["startTime", "civilStartTime", "start"]) : undefined, interval?.startUtcOffset) ??
+    localDate(pickString(sleep, ["startTime", "start", "dateOfSleep"]), undefined) ??
+    segments[0]?.start?.slice(0, 10);
+  return start ?? "unknown";
 }
 
 export function fromSleepDataPoints(payload: unknown): SleepNight[] {

@@ -47,15 +47,16 @@ const derived = fromSleepDataPoints({
 });
 assert.equal(derived[0].segments[0].seconds, 1800);
 
-// offset-aware night date: 04:56Z with -5h offset → local night of the prior day
+// night date = local WAKE date (Fitbit/Google convention): bed 23:56 (04:56Z) on 06-06,
+// woke 08:35 (13:35Z) on 06-07 → logged to 06-07, not the start day.
 const offset = fromSleepDataPoints({
   dataPoints: [{ sleep: {
-    interval: { startTime: '2026-06-07T04:56:00Z', startUtcOffset: '-18000s' },
+    interval: { startTime: '2026-06-07T04:56:00Z', startUtcOffset: '-18000s', endTime: '2026-06-07T13:35:00Z', endUtcOffset: '-18000s' },
     summary: { minutesAsleep: '509', minutesInSleepPeriod: '519' },
     stages: [{ type: 'DEEP', startTime: '2026-06-07T04:56:00Z', endTime: '2026-06-07T05:56:00Z' }]
   } }]
 });
-assert.equal(offset[0].date, '2026-06-06');          // not the UTC 2026-06-07
+assert.equal(offset[0].date, '2026-06-07');          // local wake date
 assert.equal(offset[0].googleSummary.minutesAsleep, 509);
 assert.equal(offset[0].googleSummary.efficiency, 98.1);  // 509/519
 

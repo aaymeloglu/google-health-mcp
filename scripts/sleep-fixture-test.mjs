@@ -8,15 +8,15 @@ const fakeClient = {
     assert.equal(dataType, 'sleep');
     if (pageToken) return { dataPoints: [] }; // single page
     return { dataPoints: [{ sleep: {
-      interval: { startTime: '2026-06-01T23:00:00Z', startUtcOffset: '0s', endTime: '2026-06-02T02:44:00Z', endUtcOffset: '0s' },
-      type: 'SLEEP',
+      interval: { startTime: '2026-06-01T01:00:00Z', startUtcOffset: '0s', endTime: '2026-06-01T04:44:00Z', endUtcOffset: '0s' },
+      type: 'STAGES',
       summary: { minutesInSleepPeriod: '224', minutesAsleep: '204', minutesAwake: '20' },
       stages: [
-        { type: 'DEEP',  startTime: '2026-06-01T23:00:00Z', endTime: '2026-06-02T00:40:00Z' }, // 100m
-        { type: 'AWAKE', startTime: '2026-06-02T00:40:00Z', endTime: '2026-06-02T00:50:00Z' }, // 10m
-        { type: 'LIGHT', startTime: '2026-06-02T00:50:00Z', endTime: '2026-06-02T00:54:00Z' }, // 4m isolated
-        { type: 'AWAKE', startTime: '2026-06-02T00:54:00Z', endTime: '2026-06-02T01:04:00Z' }, // 10m
-        { type: 'REM',   startTime: '2026-06-02T01:04:00Z', endTime: '2026-06-02T02:44:00Z' }  // 100m
+        { type: 'DEEP',  startTime: '2026-06-01T01:00:00Z', endTime: '2026-06-01T02:40:00Z' }, // 100m
+        { type: 'AWAKE', startTime: '2026-06-01T02:40:00Z', endTime: '2026-06-01T02:50:00Z' }, // 10m
+        { type: 'LIGHT', startTime: '2026-06-01T02:50:00Z', endTime: '2026-06-01T02:54:00Z' }, // 4m isolated
+        { type: 'AWAKE', startTime: '2026-06-01T02:54:00Z', endTime: '2026-06-01T03:04:00Z' }, // 10m
+        { type: 'REM',   startTime: '2026-06-01T03:04:00Z', endTime: '2026-06-01T04:44:00Z' }  // 100m
       ]
     } }] };
   }
