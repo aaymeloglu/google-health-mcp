@@ -38,6 +38,7 @@ assert.equal(n.light_minutes, 4);
 assert.equal(n.awake_in_bed, 20);
 assert.equal(n.long_light_blocks.length, 0);     // the 4m light run is below the 45m threshold
 assert.equal(n.google_summary.minutes_asleep, 204);
+assert.equal(n.google_summary.efficiency, 91.1); // derived in the metric layer: 204/224
 
 const md = formatSleepMarkdown(result);
 assert.ok(md.includes('# Google Health Sleep'));

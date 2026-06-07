@@ -1,5 +1,5 @@
 import type { GoogleHealthClient } from "./google-health-client.js";
-import { fromSleepDataPoints, type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
+import { fromSleepDataPoints, isObject, type SleepNight, type SleepStage, type StageSegment } from "./sleep-normalize.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -61,9 +61,21 @@ function localHHMM(iso: string, offsetSec: number): string {
 const toMin = (sec: number) => Math.round(sec / 60);
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
+// Google's v4 summary carries no explicit efficiency; derive it from asleep / sleep-period
+// here in the metric layer (the parser only surfaces raw fields).
+function googleEfficiency(s: SleepNight["googleSummary"]): number | undefined {
+  if (!s) return undefined;
+  if (s.efficiency !== undefined) return s.efficiency;
+  if (s.minutesAsleep !== undefined && s.minutesInSleepPeriod && s.minutesInSleepPeriod > 0) {
+    return round1((s.minutesAsleep / s.minutesInSleepPeriod) * 100);
+  }
+  return undefined;
+}
+
 export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEFAULT_SLEEP_CONFIG): SleepNightResult {
+  const google_eff = googleEfficiency(night.googleSummary);
   const google_summary = night.googleSummary
-    ? { minutes_asleep: night.googleSummary.minutesAsleep, efficiency: night.googleSummary.efficiency }
+    ? { minutes_asleep: night.googleSummary.minutesAsleep, efficiency: google_eff }
     : undefined;
 
   if (!night.stagesAvailable || night.segments.length === 0) {
@@ -76,7 +88,7 @@ export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEF
       restorative_minutes: 0,
       light_minutes: 0,
       awake_in_bed: awake,
-      efficiency: night.googleSummary?.efficiency ?? 0,
+      efficiency: google_eff ?? 0,
       restorative_pct: 0,
       stages_available: false,
       long_light_blocks: [],
@@ -84,9 +96,14 @@ export function computeNightMetrics(night: SleepNight, config: SleepConfig = DEF
     };
   }
 
+  let deep = 0, light = 0, rem = 0, awake = 0;
   const runs = toTimedRuns(night.segments);
-  const total = (stage: SleepStage) => runs.filter((r) => r.stage === stage).reduce((s, r) => s + r.seconds, 0);
-  const deep = total("deep"), light = total("light"), rem = total("rem"), awake = total("awake");
+  for (const r of runs) {
+    if (r.stage === "deep") deep += r.seconds;
+    else if (r.stage === "light") light += r.seconds;
+    else if (r.stage === "rem") rem += r.seconds;
+    else awake += r.seconds;
+  }
   const asleepSec = deep + light + rem;
   const inBedSec = asleepSec + awake;
   const off = night.utcOffsetSeconds ?? 0;
@@ -120,10 +137,6 @@ export interface SleepParams {
 const SLEEP_PAGE_SIZE = 50;
 const SLEEP_MAX_PAGES = 40; // safety cap (~2000 nights)
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function dateString(daysAgo = 0): string {
   return new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10);
 }
@@ -132,9 +145,13 @@ function normalizeDate(value?: string): string {
   return !value || value === "today" ? dateString(0) : value;
 }
 
-// The v4 sleep filter DSL rejects every interval member path we can form, so we list
-// newest-first and page until we've covered the requested range, then filter by local
-// wake date client-side. Reliable contract for the sleep (Session) data type.
+// NOTE (verified live against the v4 API, 2026-06): server-side time filtering of the sleep
+// (Session) data type does NOT work — every interval member path
+// (sleep.interval.civil_start_time / .start_time / .startTime, interval.start_time, ...) is
+// rejected with HTTP 400 INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER. (summary.ts uses such a
+// filter but only "works" because its call is swallowed by a safe() wrapper — it returns no
+// sleep.) So do NOT reintroduce a filter here: list newest-first and page until the requested
+// range is covered, then filter by local wake date client-side.
 async function collectSleepNights(
   client: Pick<GoogleHealthClient, "listDataPoints">,
   keep: (night: SleepNight) => boolean,

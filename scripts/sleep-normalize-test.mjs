@@ -58,6 +58,7 @@ const offset = fromSleepDataPoints({
 });
 assert.equal(offset[0].date, '2026-06-07');          // local wake date
 assert.equal(offset[0].googleSummary.minutesAsleep, 509);
-assert.equal(offset[0].googleSummary.efficiency, 98.1);  // 509/519
+assert.equal(offset[0].googleSummary.minutesInSleepPeriod, 519);
+assert.equal(offset[0].googleSummary.efficiency, undefined);  // raw only; Google sends none, derived in the metric layer
 
 console.log(JSON.stringify({ ok: true, nights: nights.length }, null, 2));

@@ -498,7 +498,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
 
   server.registerTool("google_health_sleep", {
     title: "Google Health Sleep",
-    description: "Per-night sleep computed from Google Health v4 stage segments: minutes asleep (corrected for brief wake misclassified as light), per-stage minutes, awake-in-bed, efficiency, and the stage timeline. Accepts a single date or a start/end range. Read-only, beta, non-medical.",
+    description: "Per-night sleep from Google Health v4 stage segments: Google's minutes-asleep plus the breakdown it hides — restorative (deep+REM) vs light, efficiency, awake-in-bed, and long contiguous light blocks (the morning in-and-out). Accepts a single date or a start/end range; no args returns the most recent night. Read-only, beta, non-medical.",
     inputSchema: SleepInputSchema.shape,
     outputSchema: SleepOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }

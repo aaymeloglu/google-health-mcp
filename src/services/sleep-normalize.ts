@@ -18,12 +18,14 @@ export interface SleepNight {
   segments: StageSegment[];     // ordered, UTC ISO timestamps
   utcOffsetSeconds: number;     // wearable offset, for localizing segment clock times
   stagesAvailable: boolean;
-  googleSummary?: { minutesAsleep?: number; minutesAwake?: number; efficiency?: number };
+  // Raw values as reported by Google; any derivation (e.g. efficiency when absent)
+  // happens in the metric layer (computeNightMetrics), not here.
+  googleSummary?: { minutesAsleep?: number; minutesAwake?: number; minutesInSleepPeriod?: number; efficiency?: number };
 }
 
 type UnknownRecord = Record<string, unknown>;
 
-function isObject(value: unknown): value is UnknownRecord {
+export function isObject(value: unknown): value is UnknownRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
@@ -96,17 +98,12 @@ function toSegment(raw: UnknownRecord): StageSegment | null {
 
 function summaryOf(sleep: UnknownRecord): SleepNight["googleSummary"] {
   const summary = isObject(sleep.summary) ? sleep.summary : sleep;
-  const minutesAsleep = pickNumber(summary, ["minutesAsleep"]);
   const period = pickNumber(summary, ["minutesInSleepPeriod"]);
-  // The v4 summary has no explicit efficiency; derive Google's from asleep / sleep-period.
-  let efficiency = pickNumber(summary, ["efficiency"]);
-  if (efficiency === undefined && minutesAsleep !== undefined && period && period > 0) {
-    efficiency = Math.round((minutesAsleep / period) * 1000) / 10;
-  }
   return {
-    minutesAsleep: minutesAsleep ?? pickNumber(summary, ["minutesInSleepPeriod"]),
+    minutesAsleep: pickNumber(summary, ["minutesAsleep"]) ?? period,
     minutesAwake: pickNumber(summary, ["minutesAwake"]),
-    efficiency
+    minutesInSleepPeriod: period,
+    efficiency: pickNumber(summary, ["efficiency"]) // raw only; derived in computeNightMetrics
   };
 }
 
