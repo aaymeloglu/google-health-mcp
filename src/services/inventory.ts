@@ -1,3 +1,4 @@
+import { GOOGLE_HEALTH_DATA_TYPES } from "../constants.js";
 import { buildCapabilities } from "./capabilities.js";
 
 type SupportedDataCategory = {
@@ -99,5 +100,39 @@ export function formatInventoryMarkdown(inventory: ReturnType<typeof buildDataIn
     "",
     "## Categories",
     ...categoryLines
+  ].join("\n");
+}
+
+export function buildDataTypeCatalog() {
+  const data_types = GOOGLE_HEALTH_DATA_TYPES.map((entry) => ({
+    slug: entry.slug,
+    supports: [...entry.supports],
+    unit: entry.unit,
+    scope: entry.scope
+  }));
+  return {
+    kind: "data_type_catalog" as const,
+    source: "google-health-mcp-unofficial",
+    generated_at: new Date().toISOString(),
+    note: "kebab-case slugs accepted by the data_type parameter. supports = endpoint verbs (list, reconcile, rollup) that accept the slug. Other valid Google Health v4 slugs also work; this list is the exercised, recommended set.",
+    count: data_types.length,
+    data_types
+  };
+}
+
+export function formatDataTypeCatalogMarkdown(catalog: ReturnType<typeof buildDataTypeCatalog>): string {
+  const rows = catalog.data_types.map(
+    (entry) => `- \`${entry.slug}\` — unit: ${entry.unit}; supports: ${entry.supports.join(", ")}; scope: ${entry.scope}`
+  );
+  return [
+    "# Google Health Data Types",
+    "",
+    "- **count**: " + catalog.count,
+    "- **supports legend**: list (listDataPoints), reconcile (reconcileDataPoints), rollup (dailyRollUp / rollUp)",
+    "",
+    "## Supported slugs",
+    ...rows,
+    "",
+    "> " + catalog.note
   ].join("\n");
 }

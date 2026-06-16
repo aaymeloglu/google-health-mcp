@@ -139,12 +139,10 @@ export class GoogleHealthClient {
     });
   }
 
-  // SEAM (FOUNDATION ONLY): mutating create for nutrition DataPoints. Reuses the existing
-  // post → request plumbing (auth refresh, retry, cleanObject, redaction; POST is never cached).
-  // It is only invoked by the future log_nutrition tool when isLiveWriteAuthorized() is true —
-  // NEVER by doctor --live (only by --live-write, which stops before POST unless validateOnly
-  // is confirmed). The exact verb/path + data-type slug are TO-VERIFY — see the header of
-  // google-v4-nutrition-datapoint.ts before wiring this to a real Google endpoint.
+  // Mutating create for nutrition DataPoints; reuses the post → request plumbing (auth refresh,
+  // retry, cleanObject, redaction; POST is never cached). Only invoked by the planned log_nutrition
+  // tool when a live write is authorized. The verb/path and data-type slug are still unverified —
+  // see CONTRIBUTING.md → "Planned: nutrition write" before wiring this to a real Google endpoint.
   async createNutritionDataPoint(body: Record<string, unknown>): Promise<unknown> {
     return this.post(`/v4/users/me/dataTypes/${encodeDataType(NUTRITION_DATA_TYPE)}/dataPoints`, body);
   }

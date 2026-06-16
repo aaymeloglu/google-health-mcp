@@ -13,6 +13,7 @@ import {
   DailySummaryInputSchema,
   DataInventoryOutputSchema,
   DataPointsInputSchema,
+  DataTypeCatalogOutputSchema,
   EndpointDataOutputSchema,
   ExchangeCodeInputSchema,
   ExchangeCodeOutputSchema,
@@ -33,8 +34,8 @@ import { buildCapabilities } from "../services/capabilities.js";
 import { buildConnectionStatus } from "../services/connection-status.js";
 import { buildWellnessContext, formatWellnessContextMarkdown } from "../services/context.js";
 import { getConfig } from "../services/config.js";
-import { bulletList, makeError, makeResponse } from "../services/format.js";
-import { buildDataInventory, formatInventoryMarkdown } from "../services/inventory.js";
+import { bulletList, formatDataPointsMarkdown, makeError, makeResponse } from "../services/format.js";
+import { buildDataInventory, buildDataTypeCatalog, formatDataTypeCatalogMarkdown, formatInventoryMarkdown } from "../services/inventory.js";
 import { applyPrivacy, resolvePrivacyMode } from "../services/privacy.js";
 import {
   buildProfileSummary,
@@ -66,6 +67,17 @@ export function registerGoogleHealthTools(server: McpServer): void {
   }, async ({ response_format }) => {
     const inventory = buildDataInventory();
     return makeResponse(inventory, response_format, formatInventoryMarkdown(inventory));
+  });
+
+  server.registerTool("google_health_list_data_types", {
+    title: "List Google Health Data Types",
+    description: "List the canonical kebab-case data_type slugs accepted by the data point, reconcile and rollup tools, with each slug's unit, OAuth scope family, and which endpoint verbs (list/reconcile/rollup) support it. Call this before list_data_points, reconcile_data_points, daily_rollup or rollup to choose a valid data_type instead of guessing a slug. Static metadata; does not call Google APIs.",
+    inputSchema: ResponseOnlyInputSchema.shape,
+    outputSchema: DataTypeCatalogOutputSchema.shape,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }, async ({ response_format }) => {
+    const catalog = buildDataTypeCatalog();
+    return makeResponse(catalog, response_format, formatDataTypeCatalogMarkdown(catalog));
   });
 
   server.registerTool("google_health_agent_manifest", {
@@ -319,7 +331,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageSize: params.page_size,
         pageToken: params.page_token
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Data Points", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Data Points", { endpoint, data_type: params.data_type }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -343,7 +355,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Reconciled Data", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family ?? "all", data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Reconciled Data", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family ?? "all" }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -369,7 +381,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Daily Rollup", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Daily Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -395,7 +407,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Rollup", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -624,22 +636,8 @@ export function registerGoogleHealthTools(server: McpServer): void {
     }
   );
 
-  // SEAM: the community log_nutrition WRITE tool registers here. It is intentionally NOT shipped
-  // in this foundation PR. The rails it consumes already exist:
-  //   - LogNutritionInputSchema (src/schemas/common.ts) — typed input contract
-  //   - checkRemoteWriteGate / isLiveWriteAuthorized (src/services/remote-write-gate.ts)
-  //   - estimateMeal / nutrientsForGrams (src/services/nutrition-normalize.ts)
-  //   - buildNutritionDataPointBody (src/services/google-v4-nutrition-datapoint.ts)
-  //   - client.createNutritionDataPoint(body) (src/services/google-health-client.ts)
-  // It must:
-  //   1) checkRemoteWriteGate({ explicit_user_intent, dry_run, granted_scopes }, { response_format, title: "Log Nutrition" })
-  //   2) resolve nutrients via estimateMeal()/nutrientsForGrams() (nutrition-normalize.ts)
-  //   3) buildNutritionDataPointBody() (google-v4-nutrition-datapoint.ts)
-  //   4) if isLiveWriteAuthorized → client.createNutritionDataPoint(body), else return the dry-run body
-  //   5) return makeResponse(...) / makeError(...) like google_health_profile_update.
-  // Annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  //   (openWorldHint TRUE — it talks to Google, unlike profile_update's false; matches google_health_exchange_code).
-  // BEFORE wiring the live POST, honor the TO-VERIFY flags in google-v4-nutrition-datapoint.ts
-  // (v4 create verb/path, nutrition data-type slug, DataPoint envelope, validateOnly param) and
-  // the write-scope string in constants.ts.
+  // The planned log_nutrition WRITE tool registers here. It is intentionally not shipped yet; the
+  // supporting rails (input schema, write gate, nutrient normalizer, v4 DataPoint builder, client
+  // method) already exist. See CONTRIBUTING.md → "Planned: nutrition write" for the wiring plan and
+  // the open TO-VERIFY items before enabling a live POST.
 }

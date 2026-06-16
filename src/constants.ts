@@ -36,5 +36,28 @@ export const GOOGLE_HEALTH_DATA_SOURCE_FAMILIES = [
   "users/me/dataSourceFamilies/google-sources"
 ] as const;
 
+// Canonical, agent-discoverable catalog of Google Health v4 data-type slugs this server exercises.
+// Single source of truth for: (a) the GoogleHealthDataTypeSchema description agents read in the
+// tool definition, and (b) the google_health_list_data_types tool. `supports` lists which endpoint
+// verbs accept the slug (list = listDataPoints, reconcile = reconcileDataPoints, rollup = dailyRollUp
+// + rollUp). Slugs stay in kebab case; the API still accepts other v4 slugs, so this is a guide, not
+// a hard allow-list (GoogleHealthDataTypeSchema remains an open kebab-case string).
+export const GOOGLE_HEALTH_DATA_TYPES = [
+  { slug: "steps", supports: ["list", "reconcile", "rollup"], unit: "count", scope: "activity_and_fitness" },
+  { slug: "distance", supports: ["list", "reconcile", "rollup"], unit: "meters", scope: "activity_and_fitness" },
+  { slug: "active-zone-minutes", supports: ["list", "reconcile", "rollup"], unit: "minutes", scope: "activity_and_fitness" },
+  { slug: "total-calories", supports: ["list", "reconcile", "rollup"], unit: "kilocalories", scope: "activity_and_fitness" },
+  { slug: "heart-rate", supports: ["list", "reconcile", "rollup"], unit: "bpm", scope: "activity_and_fitness" },
+  { slug: "daily-resting-heart-rate", supports: ["list", "reconcile"], unit: "bpm", scope: "activity_and_fitness" },
+  { slug: "daily-heart-rate-variability", supports: ["list", "reconcile"], unit: "milliseconds", scope: "activity_and_fitness" },
+  { slug: "sleep", supports: ["list", "reconcile"], unit: "minutes", scope: "sleep" },
+  { slug: "weight", supports: ["list", "reconcile", "rollup"], unit: "kilograms", scope: "health_metrics_and_measurements" },
+  { slug: "body-fat", supports: ["list", "reconcile", "rollup"], unit: "percent", scope: "health_metrics_and_measurements" },
+  { slug: "exercise", supports: ["list", "reconcile"], unit: "session", scope: "activity_and_fitness" },
+  { slug: "nutrition", supports: ["list", "reconcile"], unit: "macros", scope: "nutrition" }
+] as const;
+
+export const GOOGLE_HEALTH_DATA_TYPE_SLUGS = GOOGLE_HEALTH_DATA_TYPES.map((entry) => entry.slug);
+
 export const GOOGLE_HEALTH_BETA_NOTICE =
   "Google Health API v4 is new; Google recommends waiting until the end of May 2026 for stable public launches because breaking changes may occur.";

@@ -286,25 +286,89 @@ function inferBottlenecks(stats: ReturnType<typeof aggregateStats>): string[] {
   return out.length ? out : ["none_obvious_from_available_data"];
 }
 
+function labelize(key: string): string {
+  return key.replace(/_/g, " ");
+}
+
+function scorecardBullets(scorecard: UnknownRecord): string[] {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(scorecard)) {
+    if (key === "missing_or_failed" || key === "date") continue;
+    if (value === undefined || value === null) {
+      lines.push(`- **${labelize(key)}**: no data`);
+    } else if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+      lines.push(`- **${labelize(key)}**: ${value}`);
+    }
+  }
+  return lines;
+}
+
+function missingDataLine(scorecard: UnknownRecord): string | undefined {
+  const missing = scorecard.missing_or_failed;
+  if (!isObject(missing)) return undefined;
+  const failed = Object.entries(missing).filter(([, v]) => v === true).map(([k]) => k);
+  return failed.length ? `- **missing or failed**: ${failed.join(", ")}` : undefined;
+}
+
 export function formatSummaryMarkdown(summary: Awaited<ReturnType<typeof buildDailySummary>> | Awaited<ReturnType<typeof buildWeeklySummary>>): string {
-  const lines = [
-    `# Google Health ${summary.kind === "daily_summary" ? "Daily Summary" : "Weekly Summary"}`,
-    "",
-    `Generated: ${summary.generated_at}`,
-    `Source: ${summary.source}`,
-    `Beta: ${summary.beta ? "yes" : "no"}`,
-    "",
-    "## Scorecard",
-    "```json",
-    JSON.stringify(summary.scorecard, null, 2),
-    "```",
-    "",
-    "## Diagnostic",
-    "```json",
-    JSON.stringify(summary.diagnostic, null, 2),
-    "```",
-    "",
-    "> Not medical advice."
+  const isDaily = summary.kind === "daily_summary";
+  const lines: string[] = [
+    `# Google Health ${isDaily ? "Daily Summary" : "Weekly Summary"}`,
+    ""
   ];
+
+  const dq = summary.data_quality as UnknownRecord | undefined;
+  if (dq?.confidence) lines.push(`- **confidence**: ${String(dq.confidence)}`);
+  lines.push(`- **generated**: ${summary.generated_at}`);
+  const window = summary.window as UnknownRecord | undefined;
+  if (isObject(window)) {
+    if (typeof window.date === "string") lines.push(`- **date**: ${window.date}`);
+    if (typeof window.days === "number") lines.push(`- **window**: ${window.days} day(s)${typeof window.compare_days === "number" && window.compare_days > 0 ? `, compared to prior ${window.compare_days}` : ""}`);
+  }
+  lines.push("");
+
+  // Scorecard as readable bullets, not a JSON blob.
+  lines.push("## Scorecard");
+  const scorecard = summary.scorecard as UnknownRecord;
+  if (isDaily) {
+    lines.push(...scorecardBullets(scorecard));
+    const missing = missingDataLine(scorecard);
+    if (missing) lines.push(missing);
+  } else {
+    const current = isObject(scorecard.current) ? scorecard.current : {};
+    lines.push("### Current window");
+    lines.push(...scorecardBullets(current));
+    if (isObject(scorecard.previous)) {
+      lines.push("");
+      lines.push("### Prior window");
+      lines.push(...scorecardBullets(scorecard.previous));
+    }
+  }
+  lines.push("");
+
+  // Diagnostic in the whoop-style Primary signal / Signals / Action candidates prose.
+  const diagnostic = summary.diagnostic as UnknownRecord | undefined;
+  if (diagnostic) {
+    if (typeof diagnostic.readiness_context === "string") lines.push(`## Readiness context\n${diagnostic.readiness_context}\n`);
+    if (typeof diagnostic.load_classification === "string") lines.push(`## Load classification\n${diagnostic.load_classification}\n`);
+    if (typeof diagnostic.primary_signal === "string") lines.push(`## Primary signal\n${diagnostic.primary_signal}\n`);
+    if (Array.isArray(diagnostic.bottlenecks) && diagnostic.bottlenecks.length) {
+      lines.push("## Bottlenecks");
+      for (const item of diagnostic.bottlenecks) lines.push(`- ${String(item)}`);
+      lines.push("");
+    }
+    if (Array.isArray(diagnostic.action_candidates) && diagnostic.action_candidates.length) {
+      lines.push("## Action candidates");
+      diagnostic.action_candidates.forEach((action, index) => lines.push(`${index + 1}. ${String(action)}`));
+      lines.push("");
+    }
+    if (Array.isArray(diagnostic.next_week_success_metrics) && diagnostic.next_week_success_metrics.length) {
+      lines.push("## Success metrics next week");
+      for (const metric of diagnostic.next_week_success_metrics) lines.push(`- ${String(metric)}`);
+      lines.push("");
+    }
+  }
+
+  lines.push("> Not medical advice.");
   return lines.join("\n");
 }
