@@ -1,5 +1,5 @@
 export const SERVER_NAME = "google-health-mcp-server";
-export const SERVER_VERSION = "0.4.8";
+export const SERVER_VERSION = "0.4.9";
 export const NPM_PACKAGE_NAME = "google-health-mcp-unofficial";
 export const PINNED_NPM_PACKAGE = `${NPM_PACKAGE_NAME}@${SERVER_VERSION}`;
 
@@ -21,9 +21,8 @@ export const DEFAULT_SCOPES = [
 // presets (basic/activity/sleep/full) stay read-only and existing users are never forced to
 // re-consent to a write scope (and connection-status never reports it as a missing recommended
 // scope, since missing_recommended_scopes is derived purely from DEFAULT_SCOPES).
-// TO-VERIFY: confirm the exact scope string against https://developers.google.com/health/scopes.
 export const GOOGLE_HEALTH_NUTRITION_WRITE_SCOPE =
-  "https://www.googleapis.com/auth/googlehealth.nutrition";
+  "https://www.googleapis.com/auth/googlehealth.nutrition.writeonly";
 
 export const DEFAULT_LIMIT = 100;
 export const MAX_GOOGLE_HEALTH_LIMIT = 10_000;
@@ -60,4 +59,4 @@ export const GOOGLE_HEALTH_DATA_TYPES = [
 export const GOOGLE_HEALTH_DATA_TYPE_SLUGS = GOOGLE_HEALTH_DATA_TYPES.map((entry) => entry.slug);
 
 export const GOOGLE_HEALTH_BETA_NOTICE =
-  "Google Health API v4 is new; Google recommends waiting until the end of May 2026 for stable public launches because breaking changes may occur.";
+  "Google Health API v4 is new and still evolving; check the official release notes before stable public launches because scopes and data types can change.";

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.9 - 2026-06-27
+
+### Changed
+
+- Refresh the above-the-fold README for Google Health API v4 builders: install,
+  agent prompts, privacy guarantees, tool catalog, Living Body demo path and
+  Delx Wellness cross-links are now visible before the long install docs.
+- Move the full tool catalog into `docs/tools.md` so support answers can link
+  to one stable page.
+- Add `docs/beta-feedback.md` with safe tester workflows for issues #2, #3 and
+  #4.
+- Replace stale "wait until end of May 2026" copy with a current evolving-API
+  note that points to Google's official release notes.
+- Update the opt-in nutrition write scope constant to
+  `https://www.googleapis.com/auth/googlehealth.nutrition.writeonly`, matching
+  Google's write-only scope naming. No write tool ships in this release.
+
 ## 0.4.8 - 2026-06-27
 
 ### Security

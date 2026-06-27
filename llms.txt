@@ -7,7 +7,7 @@ Primary command: npm exec --yes --package=google-health-mcp-unofficial -- google
 MCP command: google-health-mcp-server
 
 - MCP registry name: io.github.davidmosiah/google-health-mcp
-- Status: beta while Google Health API v4 stabilizes before end of May 2026.
+- Status: beta while Google Health API v4 evolves; check official release notes because scopes and data types can change.
 - Current beta ask: testers with Fitbit, Pixel Watch, Android and Google Health API access should report setup friction and data type gaps.
 - Start agents with google_health_connection_status and google_health_data_inventory.
 - Read-only default tools: identity, profile, settings, list data points, reconcile, dailyRollUp, rollUp, daily summary, weekly summary.
