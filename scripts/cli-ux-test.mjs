@@ -247,8 +247,9 @@ try {
   const supportPayload = JSON.parse(supportText);
   assert.equal(supportPayload.package.name, 'google-health-mcp-unofficial');
   assert.equal(supportPayload.redacted, true);
-  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, true);
-  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, true);
+  assert.equal(supportPayload.config.source, 'local_config');
+  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, false);
+  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, false);
   assert.match(supportPayload.issue_body, /Google Health MCP support bundle/);
   assert.doesNotMatch(supportText, /sleep-client-secret/);
   assert.doesNotMatch(supportText, /"access"/);
@@ -302,7 +303,7 @@ try {
     });
     assert.equal(insecureSupport.status, 0, insecureSupport.stderr);
     assert.doesNotMatch(insecureSupport.stdout, new RegExp(tokenPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.match(insecureSupport.stdout, /\[local-token-path\]/);
+    assert.match(insecureSupport.stdout, /google-health-mcp-server auth/);
     chmodSync(tokenPath, 0o600);
   }
 

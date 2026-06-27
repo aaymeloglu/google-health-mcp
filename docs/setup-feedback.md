@@ -15,8 +15,12 @@ npx -y google-health-mcp-unofficial support --feedback --json --client hermes
 
 The output is an anonymous, redacted setup-feedback bundle for
 [issue #4](https://github.com/davidmosiah/google-health-mcp/issues/4). It
-includes package/runtime posture, OAuth setup state, token presence, scope
-counts, client-readiness booleans and reviewer questions.
+includes package/runtime posture, public OAuth setup metadata, token file
+presence/readability, friction markers and reviewer questions.
+
+For safety, this public report does not read local config JSON or token JSON.
+When a token exists, scope status is reported as `unknown`; run
+`doctor --live` locally for private scope/API details.
 
 It intentionally does not include:
 

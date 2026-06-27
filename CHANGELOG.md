@@ -21,6 +21,9 @@
 - Live coverage reports include only operation status and point-count buckets;
   tests assert that OAuth secrets, local paths and example health values do not
   leak into the report.
+- Public support and setup-feedback reports now use metadata-only file checks
+  and no longer read local config JSON or token JSON before printing redacted
+  output.
 
 ## 0.5.0 - 2026-06-27
 
