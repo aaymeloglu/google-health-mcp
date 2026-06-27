@@ -104,7 +104,8 @@ The full tool catalog — Google Health API methods, agent manifest, diagnostics
 - Secrets can live in `~/.google-health-mcp/config.json` or `GOOGLE_HEALTH_*` environment variables.
 - Tools never return access tokens, refresh tokens or client secrets.
 - `GOOGLE_HEALTH_PRIVACY_MODE=structured` is the default; `raw` mode is explicit and should be used only for debugging or deep analysis.
-- `support --redacted` prints a copy-paste support bundle for GitHub issues without tokens, secrets or health measurements.
+- `support --redacted` prints a copy-paste support bundle for GitHub issues without tokens, secrets, local paths or health measurements.
+- `support --feedback --json` prints an anonymous setup-feedback bundle for beta testers and MCP client reports.
 
 ## See the full agent demo →
 
@@ -123,9 +124,10 @@ The highest-leverage contribution right now is real setup feedback from Fitbit, 
 If you can test with a real account:
 
 - Run `npx -y google-health-mcp-unofficial doctor` and confirm the OAuth flow is clear.
+- Run `npx -y google-health-mcp-unofficial support --feedback --json` and paste the anonymous bundle into issue #4.
 - Try `google_health_connection_status`, `google_health_data_inventory` and `google_health_daily_summary` from your MCP client.
 - Open an issue for missing data types, confusing setup steps, client-specific friction or privacy concerns.
-- Do **not** paste OAuth tokens, client secrets or personal health measurements into public issues.
+- Do **not** paste OAuth tokens, client secrets, local paths or personal health measurements into public issues.
 
 Useful links:
 
@@ -133,6 +135,7 @@ Useful links:
 - [Data coverage validation](https://github.com/davidmosiah/google-health-mcp/issues/3)
 - [MCP client setup feedback](https://github.com/davidmosiah/google-health-mcp/issues/4)
 - [Beta feedback guide](docs/beta-feedback.md)
+- [Anonymous setup feedback](docs/setup-feedback.md)
 - [Demo](docs/demo.md)
 - [Discovery kit](docs/discovery.md)
 
@@ -160,6 +163,7 @@ If setup gets stuck:
 npx -y google-health-mcp-unofficial doctor --fix       # repairs local config/token permissions (chmod 600 where supported)
 npx -y google-health-mcp-unofficial doctor --live      # calls safe identity/profile/settings endpoints to prove the API is reachable
 npx -y google-health-mcp-unofficial support --redacted # copy-paste support bundle, no tokens/secrets/measurements
+npx -y google-health-mcp-unofficial support --feedback --json # anonymous setup feedback for issue #4
 ```
 
 Standalone MCP config:

@@ -5,3 +5,4 @@ Important tools: google_health_connection_status, google_health_data_inventory, 
 Privacy: tokens stay local under ~/.google-health-mcp. summary and structured modes minimize sensitive output. raw mode is explicit.
 Boundary: beta Google Health API v4 connector. Not affiliated with Google or Fitbit. Not medical advice.
 Beta tester ask: validate setup, OAuth, data type coverage and privacy boundaries with Fitbit, Pixel Watch, Android and Google Health API v4 access. Check official release notes because scopes and data types can change.
+Anonymous setup feedback: use `google-health-mcp-server support --feedback --json`; it is designed for issue #4 and omits tokens, client-secret values, local paths and health measurements.

@@ -15,6 +15,7 @@ if (packageJson.private !== true && packageJson.license !== 'UNLICENSED') {
 requireFile('llms.txt');
 requireFile('server.json');
 requireFile('glama.json');
+requireFile('docs/setup-feedback.md');
 
 if (serverJson.version !== packageJson.version) {
   errors.push(`server.json version ${serverJson.version} does not match package.json version ${packageJson.version}`);
@@ -36,6 +37,16 @@ if (npmPackage) {
 
 if (Array.isArray(packageJson.files) && !packageJson.files.includes('llms.txt')) {
   errors.push('package.json files must include llms.txt.');
+}
+
+const readme = readFileSync('README.md', 'utf8');
+if (!readme.includes('support --feedback --json')) {
+  errors.push('README.md must document anonymous setup feedback.');
+}
+
+const setupFeedbackDoc = readFileSync('docs/setup-feedback.md', 'utf8');
+if (!setupFeedbackDoc.includes('support --feedback --json')) {
+  errors.push('docs/setup-feedback.md must document the support --feedback command.');
 }
 
 if (errors.length) {

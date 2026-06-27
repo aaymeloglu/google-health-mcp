@@ -253,6 +253,58 @@ try {
   assert.doesNotMatch(supportText, /sleep-client-secret/);
   assert.doesNotMatch(supportText, /"access"/);
   assert.doesNotMatch(supportText, /"refresh"/);
+  assert.doesNotMatch(supportText, new RegExp(tokenPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const setupFeedback = spawnSync(process.execPath, [
+    'dist/index.js',
+    'support',
+    '--feedback',
+    '--json',
+    '--client',
+    'hermes',
+    '--home-dir',
+    dir
+  ], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH
+    }
+  });
+  assert.equal(setupFeedback.status, 0, setupFeedback.stderr);
+  const setupFeedbackText = setupFeedback.stdout;
+  const setupFeedbackPayload = JSON.parse(setupFeedbackText);
+  assert.equal(setupFeedbackPayload.kind, 'google_health_setup_feedback');
+  assert.equal(setupFeedbackPayload.anonymous, true);
+  assert.equal(setupFeedbackPayload.redacted, true);
+  assert.equal(setupFeedbackPayload.client_state.client, 'hermes');
+  assert.ok(Array.isArray(setupFeedbackPayload.friction_markers));
+  assert.ok(setupFeedbackPayload.reviewer_questions.some((question) => /MCP client/.test(question)));
+  assert.match(setupFeedbackPayload.issue_body, /Anonymous Google Health MCP setup feedback/);
+  assert.doesNotMatch(setupFeedbackText, /sleep-client-secret/);
+  assert.doesNotMatch(setupFeedbackText, /"access"/);
+  assert.doesNotMatch(setupFeedbackText, /"refresh"/);
+  assert.doesNotMatch(setupFeedbackText, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(setupFeedbackText, /tokens\.json/);
+
+  if (supportsChmodAssertions) {
+    chmodSync(tokenPath, 0o644);
+    const insecureSupport = spawnSync(process.execPath, [
+      'dist/index.js',
+      'support',
+      '--json',
+      '--home-dir',
+      dir
+    ], {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH
+      }
+    });
+    assert.equal(insecureSupport.status, 0, insecureSupport.stderr);
+    assert.doesNotMatch(insecureSupport.stdout, new RegExp(tokenPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(insecureSupport.stdout, /\[local-token-path\]/);
+    chmodSync(tokenPath, 0o600);
+  }
 
   writeFileSync(tokenPath, JSON.stringify({
     access_token: 'live-access-token',

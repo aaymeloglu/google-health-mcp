@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 - 2026-06-27
+
+### Added
+
+- Add `google-health-mcp-server support --feedback --json`, an anonymous setup
+  feedback bundle for issue #4 and MCP client beta reports.
+- The feedback bundle reports package/runtime posture, setup state, token
+  presence, scope counts, client-readiness booleans, friction markers and
+  reviewer questions without exposing OAuth tokens, Google Cloud client-secret
+  values, local paths, raw token files or health measurements.
+- Add `docs/setup-feedback.md` and wire the anonymous feedback path into the
+  README, beta guide, quickstart, tool docs and LLM docs.
+
+### Security
+
+- Redact local token/config paths from support next-step output so public setup
+  reports do not leak home-directory paths.
+
 ## 0.4.9 - 2026-06-27
 
 ### Changed

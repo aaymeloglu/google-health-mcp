@@ -76,5 +76,6 @@ Useful references:
 - [Google Health API scopes](https://developers.google.com/health/scopes)
 - [Google Health API data types](https://developers.google.com/health/data-types)
 
-For safe public feedback, use [Beta Feedback Guide](beta-feedback.md). Do not
-post raw personal health values, OAuth tokens, client secrets or token files.
+For safe public feedback, use [Beta Feedback Guide](beta-feedback.md) and
+[Anonymous Setup Feedback](setup-feedback.md). Do not post raw personal health
+values, OAuth tokens, client secrets, local paths or token files.

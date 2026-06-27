@@ -18,6 +18,7 @@ npx -y google-health-mcp-unofficial auth
 npx -y google-health-mcp-unofficial doctor
 npx -y google-health-mcp-unofficial doctor --live
 npx -y google-health-mcp-unofficial support --redacted
+npx -y google-health-mcp-unofficial support --feedback --json
 ```
 
 `doctor --live` calls safe identity, profile and settings endpoints after auth.
@@ -27,6 +28,9 @@ It is the preferred proof that OAuth and API reachability are wired correctly.
 
 For setup feedback:
 
+- Paste the output of `support --feedback --json` when possible. It is designed
+  for issue #4 and does not include local paths, tokens, secrets or health
+  measurements.
 - MCP client used: Claude Desktop, Cursor, Codex, Hermes, OpenClaw or another
   client.
 - Platform: macOS, Windows, Linux, WSL or container.
@@ -50,6 +54,7 @@ For data coverage:
 
 - OAuth access tokens, refresh tokens or token files.
 - Google Cloud client secrets.
+- Local config paths, token paths or home-directory paths.
 - Raw personal health measurements.
 - Full API responses containing private health data.
 - Screenshots that expose account emails, device IDs or project secrets.

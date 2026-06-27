@@ -10,7 +10,11 @@ import {
   getProfile,
   missingCriticalFields
 } from "../services/profile-store.js";
-import { buildSupportReport } from "../services/support-report.js";
+import {
+  buildSetupFeedbackReport,
+  buildSupportReport,
+  formatSetupFeedbackReport
+} from "../services/support-report.js";
 import { runAuthCommand } from "./auth.js";
 import { runSetupCommand } from "./setup.js";
 
@@ -72,6 +76,12 @@ export { COMMANDS };
 
 async function runSupport(args: string[]): Promise<number> {
   const options = parseSupportOptions(args);
+  if (options.feedback) {
+    const report = await buildSetupFeedbackReport({ homeDir: options.homeDir, client: options.client });
+    if (options.json) console.log(JSON.stringify(report, null, 2));
+    else console.log(formatSetupFeedbackReport(report));
+    return 0;
+  }
   const report = await buildSupportReport({ homeDir: options.homeDir, client: options.client });
   const safeReport = safeSupportReport(report);
   if (options.json) console.log(JSON.stringify(safeReport, null, 2));
@@ -170,6 +180,7 @@ function parseSupportOptions(args: string[]) {
   return {
     json: args.includes("--json"),
     redacted: true,
+    feedback: args.includes("--feedback"),
     homeDir: homeDir ?? homedir(),
     client
   };
@@ -230,7 +241,10 @@ function safeSupportReport(report: Awaited<ReturnType<typeof buildSupportReport>
       expired: report.token.expired,
       has_refresh_token: report.token.has_refresh_token
     },
-    next_steps: report.next_steps
+    next_steps: report.next_steps.map((step) => step
+      .replace(/chmod 600\s+\S+/g, "chmod 600 [local-token-path]")
+      .replace(/at\s+\/\S+/g, "at [local-path]")
+      .replace(/~\/\.google-health-mcp\/tokens\.json/g, "[local-token-path]"))
   };
   return {
     ...safeReport,
@@ -314,6 +328,8 @@ Usage:
   google-health-mcp-server doctor --live-write  Also dry-run the nutrition write path (validates the v4 body; never POSTs)
   google-health-mcp-server support         Print a redacted support bundle for GitHub issues
   google-health-mcp-server support --json  Print redacted support bundle as JSON
+  google-health-mcp-server support --feedback --json
+                                   Print anonymous setup feedback for beta issue #4
   google-health-mcp-server auth            Authorize Google Health with local browser callback
   google-health-mcp-server auth --no-open  Print auth URL without opening browser
   google-health-mcp-server onboarding      Print the shared Delx Wellness onboarding flow as JSON (+ TTY summary on stderr)
