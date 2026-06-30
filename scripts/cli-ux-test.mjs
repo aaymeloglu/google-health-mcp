@@ -247,12 +247,65 @@ try {
   const supportPayload = JSON.parse(supportText);
   assert.equal(supportPayload.package.name, 'google-health-mcp-unofficial');
   assert.equal(supportPayload.redacted, true);
-  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, true);
-  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, true);
+  assert.equal(supportPayload.config.source, 'local_config');
+  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, false);
+  assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, false);
   assert.match(supportPayload.issue_body, /Google Health MCP support bundle/);
   assert.doesNotMatch(supportText, /sleep-client-secret/);
   assert.doesNotMatch(supportText, /"access"/);
   assert.doesNotMatch(supportText, /"refresh"/);
+  assert.doesNotMatch(supportText, new RegExp(tokenPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const setupFeedback = spawnSync(process.execPath, [
+    'dist/index.js',
+    'support',
+    '--feedback',
+    '--json',
+    '--client',
+    'hermes',
+    '--home-dir',
+    dir
+  ], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH
+    }
+  });
+  assert.equal(setupFeedback.status, 0, setupFeedback.stderr);
+  const setupFeedbackText = setupFeedback.stdout;
+  const setupFeedbackPayload = JSON.parse(setupFeedbackText);
+  assert.equal(setupFeedbackPayload.kind, 'google_health_setup_feedback');
+  assert.equal(setupFeedbackPayload.anonymous, true);
+  assert.equal(setupFeedbackPayload.redacted, true);
+  assert.equal(setupFeedbackPayload.client_state.client, 'hermes');
+  assert.ok(Array.isArray(setupFeedbackPayload.friction_markers));
+  assert.ok(setupFeedbackPayload.reviewer_questions.some((question) => /MCP client/.test(question)));
+  assert.match(setupFeedbackPayload.issue_body, /Anonymous Google Health MCP setup feedback/);
+  assert.doesNotMatch(setupFeedbackText, /sleep-client-secret/);
+  assert.doesNotMatch(setupFeedbackText, /"access"/);
+  assert.doesNotMatch(setupFeedbackText, /"refresh"/);
+  assert.doesNotMatch(setupFeedbackText, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(setupFeedbackText, /tokens\.json/);
+
+  if (supportsChmodAssertions) {
+    chmodSync(tokenPath, 0o644);
+    const insecureSupport = spawnSync(process.execPath, [
+      'dist/index.js',
+      'support',
+      '--json',
+      '--home-dir',
+      dir
+    ], {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH
+      }
+    });
+    assert.equal(insecureSupport.status, 0, insecureSupport.stderr);
+    assert.doesNotMatch(insecureSupport.stdout, new RegExp(tokenPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(insecureSupport.stdout, /google-health-mcp-server auth/);
+    chmodSync(tokenPath, 0o600);
+  }
 
   writeFileSync(tokenPath, JSON.stringify({
     access_token: 'live-access-token',

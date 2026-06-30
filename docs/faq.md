@@ -10,7 +10,9 @@ No. Health Connect is Android/on-device. This connector uses Google Health API v
 
 ## Is it stable?
 
-It is beta. Google recommends waiting until the end of May 2026 before stable public launch because breaking changes may occur.
+It is beta. Google Health API v4 is live for builders, but official release
+notes continue to document scope and data-type changes. Check the release notes
+before production launch decisions.
 
 ## Does it expose raw sensors?
 

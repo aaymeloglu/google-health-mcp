@@ -9,10 +9,13 @@ import {
   CapabilitiesOutputSchema,
   ConnectionStatusInputSchema,
   ConnectionStatusOutputSchema,
+  CoverageInputSchema,
+  CoverageOutputSchema,
   DailyRollupInputSchema,
   DailySummaryInputSchema,
   DataInventoryOutputSchema,
   DataPointsInputSchema,
+  DataTypeCatalogOutputSchema,
   EndpointDataOutputSchema,
   ExchangeCodeInputSchema,
   ExchangeCodeOutputSchema,
@@ -33,10 +36,11 @@ import { buildPrivacyAudit } from "../services/audit.js";
 import { buildAgentManifest, formatAgentManifestMarkdown } from "../services/agent-manifest.js";
 import { buildCapabilities } from "../services/capabilities.js";
 import { buildConnectionStatus } from "../services/connection-status.js";
+import { buildDataTypeCoveragePlan, buildLiveDataTypeCoverage, formatCoverageMarkdown } from "../services/coverage-report.js";
 import { buildWellnessContext, formatWellnessContextMarkdown } from "../services/context.js";
 import { getConfig } from "../services/config.js";
-import { bulletList, makeError, makeResponse } from "../services/format.js";
-import { buildDataInventory, formatInventoryMarkdown } from "../services/inventory.js";
+import { bulletList, formatDataPointsMarkdown, makeError, makeResponse } from "../services/format.js";
+import { buildDataInventory, buildDataTypeCatalog, formatDataTypeCatalogMarkdown, formatInventoryMarkdown } from "../services/inventory.js";
 import { applyPrivacy, resolvePrivacyMode } from "../services/privacy.js";
 import {
   buildProfileSummary,
@@ -69,6 +73,31 @@ export function registerGoogleHealthTools(server: McpServer): void {
   }, async ({ response_format }) => {
     const inventory = buildDataInventory();
     return makeResponse(inventory, response_format, formatInventoryMarkdown(inventory));
+  });
+
+  server.registerTool("google_health_list_data_types", {
+    title: "List Google Health Data Types",
+    description: "List the canonical kebab-case data_type slugs accepted by the data point, reconcile and rollup tools, with each slug's unit, OAuth scope family, and which endpoint verbs (list/reconcile/rollup) support it. Call this before list_data_points, reconcile_data_points, daily_rollup or rollup to choose a valid data_type instead of guessing a slug. Static metadata; does not call Google APIs.",
+    inputSchema: ResponseOnlyInputSchema.shape,
+    outputSchema: DataTypeCatalogOutputSchema.shape,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }, async ({ response_format }) => {
+    const catalog = buildDataTypeCatalog();
+    return makeResponse(catalog, response_format, formatDataTypeCatalogMarkdown(catalog));
+  });
+
+  server.registerTool("google_health_data_type_coverage", {
+    title: "Google Health Data Type Coverage",
+    description: "Build a data-type coverage plan from the official Google Health API data-type table, or run explicit live read-only checks against a real OAuth account. Live mode returns only redacted status and point-count buckets, never raw health payloads.",
+    inputSchema: CoverageInputSchema.shape,
+    outputSchema: CoverageOutputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  }, async ({ live, date, data_source_family, data_types, response_format }) => {
+    const options = { date, dataSourceFamily: data_source_family, dataTypes: data_types };
+    const report = live
+      ? await buildLiveDataTypeCoverage(client(), options)
+      : buildDataTypeCoveragePlan(options);
+    return makeResponse(report, response_format, formatCoverageMarkdown(report));
   });
 
   server.registerTool("google_health_agent_manifest", {
@@ -237,7 +266,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
 
   server.registerTool("google_health_exchange_code", {
     title: "Exchange Google Health OAuth Code",
-    description: "Exchange a Google OAuth authorization code for local tokens. Tokens are stored locally with 0600 permissions and are never returned.",
+    description: "Exchange a Google OAuth authorization code for local tokens. Tokens are stored locally with 0600 permissions and are never returned. Gated: requires explicit user intent — agents must not call this autonomously.",
     inputSchema: ExchangeCodeInputSchema.shape,
     outputSchema: ExchangeCodeOutputSchema.shape,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
@@ -322,7 +351,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageSize: params.page_size,
         pageToken: params.page_token
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Data Points", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Data Points", { endpoint, data_type: params.data_type }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -346,7 +375,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Reconciled Data", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family ?? "all", data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Reconciled Data", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family ?? "all" }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -372,7 +401,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Daily Rollup", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Daily Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -398,7 +427,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
         pageToken: params.page_token,
         dataSourceFamily: params.data_source_family
       }), mode);
-      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, bulletList("Google Health Rollup", { endpoint, data_type: params.data_type, data: JSON.stringify(data) }));
+      return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
       return makeError((error as Error).message);
     }
@@ -452,7 +481,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
 
   server.registerTool("google_health_revoke_access", {
     title: "Revoke Google Health OAuth Access",
-    description: "Revoke the current Google OAuth grant and delete the local token file. Use only when the user explicitly wants to disconnect Google Health.",
+    description: "Revoke the current Google OAuth grant and delete the local token file. Use only when the user explicitly wants to disconnect Google Health. Gated: requires explicit user intent — agents must not call this autonomously.",
     inputSchema: ResponseOnlyInputSchema.shape,
     outputSchema: RevokeAccessOutputSchema.shape,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
@@ -642,22 +671,8 @@ export function registerGoogleHealthTools(server: McpServer): void {
     }
   );
 
-  // SEAM: the community log_nutrition WRITE tool registers here. It is intentionally NOT shipped
-  // in this foundation PR. The rails it consumes already exist:
-  //   - LogNutritionInputSchema (src/schemas/common.ts) — typed input contract
-  //   - checkRemoteWriteGate / isLiveWriteAuthorized (src/services/remote-write-gate.ts)
-  //   - estimateMeal / nutrientsForGrams (src/services/nutrition-normalize.ts)
-  //   - buildNutritionDataPointBody (src/services/google-v4-nutrition-datapoint.ts)
-  //   - client.createNutritionDataPoint(body) (src/services/google-health-client.ts)
-  // It must:
-  //   1) checkRemoteWriteGate({ explicit_user_intent, dry_run, granted_scopes }, { response_format, title: "Log Nutrition" })
-  //   2) resolve nutrients via estimateMeal()/nutrientsForGrams() (nutrition-normalize.ts)
-  //   3) buildNutritionDataPointBody() (google-v4-nutrition-datapoint.ts)
-  //   4) if isLiveWriteAuthorized → client.createNutritionDataPoint(body), else return the dry-run body
-  //   5) return makeResponse(...) / makeError(...) like google_health_profile_update.
-  // Annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  //   (openWorldHint TRUE — it talks to Google, unlike profile_update's false; matches google_health_exchange_code).
-  // BEFORE wiring the live POST, honor the TO-VERIFY flags in google-v4-nutrition-datapoint.ts
-  // (v4 create verb/path, nutrition data-type slug, DataPoint envelope, validateOnly param) and
-  // the write-scope string in constants.ts.
+  // The planned log_nutrition WRITE tool registers here. It is intentionally not shipped yet; the
+  // supporting rails (input schema, write gate, nutrient normalizer, v4 DataPoint builder, client
+  // method) already exist. See CONTRIBUTING.md → "Planned: nutrition write" for the wiring plan and
+  // the open TO-VERIFY items before enabling a live POST.
 }

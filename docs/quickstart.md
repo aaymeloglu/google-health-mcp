@@ -61,4 +61,4 @@ Open an issue if any of these happen:
 - A tool returns too much personal context for the default structured privacy mode.
 - A filter expression from the Google Health docs does not work as expected.
 
-Run `google-health-mcp-server support --redacted` and paste that bundle when possible. Do not paste OAuth tokens, client secrets or personal health measurements into public issues.
+Run `google-health-mcp-server support --feedback --json` for anonymous setup feedback, or `google-health-mcp-server support --redacted` for a support bundle. Do not paste OAuth tokens, client secrets, local paths or personal health measurements into public issues.
