@@ -46,5 +46,7 @@ This repo is the unofficial Google Health MCP connector for local agent workflow
 - **Naming** is neutral and descriptive (`daily_summary`, `sleep_minutes`) — no editorializing
   adjectives in tool or field names.
 - **Tests** are `node:assert` fixtures under `scripts/*.mjs`, import from `../dist/...`, use a
-  `fakeClient`, and are wired into the `npm test` chain. Adding a tool also requires adding it
-  to the `expectedTools` list in `scripts/smoke-tools.mjs`.
+  `fakeClient`, and signal failure with a non-zero exit (an uncaught assert or `process.exit(1)`).
+  `npm test` auto-discovers and runs every `scripts/*.mjs` via `scripts/run-tests.mjs` — dropping
+  a new file in is all that's needed, nothing to wire by hand. Adding a tool also requires adding
+  it to the `expectedTools` list in `scripts/smoke-tools.mjs`.
