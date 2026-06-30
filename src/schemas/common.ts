@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_LIMIT, DEFAULT_MAX_PAGES, GOOGLE_HEALTH_DATA_SOURCE_FAMILIES, MAX_GOOGLE_HEALTH_LIMIT, MAX_PAGES } from "../constants.js";
+import { DEFAULT_LIMIT, DEFAULT_MAX_PAGES, GOOGLE_HEALTH_DATA_SOURCE_FAMILIES, GOOGLE_HEALTH_DATA_TYPE_SLUGS, MAX_GOOGLE_HEALTH_LIMIT, MAX_PAGES } from "../constants.js";
 import { AGENT_CLIENTS } from "../services/agent-manifest.js";
 
 export const ResponseFormatSchema = z.enum(["markdown", "json"]).default("markdown");
@@ -12,7 +12,7 @@ export const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$|^today$/).defaul
 export const DateTimeSchema = z.string().datetime({ offset: true }).describe("ISO 8601 date-time with timezone, e.g. 2026-05-01T00:00:00Z");
 export const GoogleHealthDataTypeSchema = z.string()
   .regex(/^[a-z0-9][a-z0-9-]*$/)
-  .describe("Google Health data type in kebab case, e.g. steps, sleep, heart-rate, daily-resting-heart-rate.");
+  .describe(`Google Health data type in kebab case. Supported slugs (call google_health_list_data_types for units and which verbs each supports): ${GOOGLE_HEALTH_DATA_TYPE_SLUGS.join(", ")}. Other valid v4 kebab-case slugs are also accepted.`);
 export const DataSourceFamilySchema = z.enum(GOOGLE_HEALTH_DATA_SOURCE_FAMILIES).optional();
 
 export const SimpleReadInputSchema = z.object({
@@ -21,6 +21,14 @@ export const SimpleReadInputSchema = z.object({
 }).strict();
 
 export const ResponseOnlyInputSchema = z.object({
+  response_format: ResponseFormatSchema
+}).strict();
+
+export const CoverageInputSchema = z.object({
+  live: z.boolean().default(false).describe("Default false. When true, calls read-only Google Health endpoints after OAuth setup and returns only redacted coverage status."),
+  date: DateSchema,
+  data_source_family: DataSourceFamilySchema,
+  data_types: z.array(GoogleHealthDataTypeSchema).max(50).optional().describe("Optional subset of data_type slugs. Omit to validate the full local catalog."),
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -34,10 +42,9 @@ export const ConnectionStatusInputSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
-// SEAM (FOUNDATION ONLY): typed input contract for the future, NOT-YET-REGISTERED log_nutrition
-// WRITE tool. Defined now so the gate/normalizer/v4-mapper share one contract. No tool is
-// registered against it. If the community PR ships its own input schema, reuse THIS one to avoid
-// a duplicate-export merge conflict.
+// Typed input contract for the planned (not-yet-registered) log_nutrition write tool. Defined now
+// so the write gate, nutrient normalizer and v4 DataPoint mapper share one contract. Reuse this
+// schema when the tool ships. See CONTRIBUTING.md → "Planned: nutrition write".
 export const LogNutritionInputSchema = z.object({
   // free-text path OR explicit nutrients/food
   text: z.string().max(1000).optional().describe("Free-text meal, e.g. '2 ovos e 100g de arroz'. Resolved offline via estimateMeal."),
@@ -331,6 +338,33 @@ export const DataInventoryOutputSchema = z.object({
   links: z.record(z.string(), z.string()),
   notes: z.array(z.string())
 }).strict();
+
+export const DataTypeCatalogOutputSchema = z.object({
+  kind: z.literal("data_type_catalog"),
+  source: z.string(),
+  official_source: z.object({
+    url: z.string(),
+    page_last_updated: z.string(),
+    captured_at: z.string()
+  }).strict(),
+  generated_at: z.string(),
+  note: z.string(),
+  count: z.number().int().nonnegative(),
+  data_types: z.array(z.object({
+    slug: z.string(),
+    name: z.string(),
+    kind: z.string(),
+    supports: z.array(z.enum(["list", "reconcile", "rollup"])),
+    official_operations: z.array(z.string()),
+    unit: z.string(),
+    scope: z.string()
+  }).strict())
+}).strict();
+
+export const CoverageOutputSchema = z.object({
+  kind: z.literal("data_type_coverage"),
+  mode: z.enum(["plan", "live"])
+}).passthrough();
 
 export const SummaryOutputSchema = z.object({
   kind: z.enum(["daily_summary", "weekly_summary"]),

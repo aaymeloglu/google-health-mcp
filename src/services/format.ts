@@ -56,6 +56,49 @@ export function formatCollection(title: string, records: unknown[], meta: Record
   return lines.join("\n");
 }
 
+function countDataPoints(data: unknown): number | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as Record<string, unknown>;
+  for (const key of ["dataPoints", "rollupDataPoints"]) {
+    if (Array.isArray(record[key])) return (record[key] as unknown[]).length;
+  }
+  return undefined;
+}
+
+function nextPageToken(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const token = (data as Record<string, unknown>).nextPageToken;
+  return typeof token === "string" && token ? token : undefined;
+}
+
+/**
+ * Render a Google Health data-point / rollup payload as readable markdown instead of dumping the
+ * raw JSON as a single bullet value. Shows the endpoint, data type, point count, pagination and a
+ * truncated JSON preview so the agent and the human both get a legible response in chat.
+ */
+export function formatDataPointsMarkdown(
+  title: string,
+  meta: { endpoint: string; data_type: string; data_source_family?: string },
+  data: unknown
+): string {
+  const lines = [`# ${title}`, ""];
+  lines.push(`- **endpoint**: ${meta.endpoint}`);
+  lines.push(`- **data_type**: ${meta.data_type}`);
+  if (meta.data_source_family) lines.push(`- **data_source_family**: ${meta.data_source_family}`);
+  const count = countDataPoints(data);
+  if (count !== undefined) lines.push(`- **points**: ${count}`);
+  const token = nextPageToken(data);
+  if (token) lines.push(`- **has_more**: yes (pass page_token to continue)`);
+  lines.push("");
+  const preview = JSON.stringify(data, null, 2) ?? "null";
+  const truncated = preview.length > 1500 ? `${preview.slice(0, 1500)}\n... (truncated; use response_format=json for the full payload)` : preview;
+  lines.push("## Payload");
+  lines.push("```json");
+  lines.push(truncated);
+  lines.push("```");
+  return lines.join("\n");
+}
+
 function formatMarkdownValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);

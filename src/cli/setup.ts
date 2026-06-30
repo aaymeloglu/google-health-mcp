@@ -184,7 +184,9 @@ function parsePrivacyMode(value: string): "summary" | "structured" | "raw" {
 }
 
 function writeClientConfig(client: AgentClientName, homeDir: string): ClientConfigResult {
-  if (client === "claude") return { path: mergeClaudeConfig(homeDir) };
+  if (client === "claude") return { path: mergeMcpServersConfig(claudeConfigPath(homeDir)) };
+  if (client === "cursor") return { path: mergeMcpServersConfig(join(homeDir, ".cursor", "mcp.json")) };
+  if (client === "windsurf") return { path: mergeMcpServersConfig(join(homeDir, ".codeium", "windsurf", "mcp_config.json")) };
   if (client === "hermes") return writeHermesClientConfig(homeDir);
   const path = join(homeDir, ".google-health-mcp", "mcp-configs", `${client}.json`);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -193,10 +195,16 @@ function writeClientConfig(client: AgentClientName, homeDir: string): ClientConf
   return { path };
 }
 
-function mergeClaudeConfig(homeDir: string): string {
-  const path = process.platform === "darwin"
+function claudeConfigPath(homeDir: string): string {
+  return process.platform === "darwin"
     ? join(homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json")
     : join(homeDir, ".google-health-mcp", "mcp-configs", "claude-desktop.json");
+}
+
+// Merge the google_health server block into a JSON config that uses the standard `mcpServers` map
+// (Claude Desktop, Cursor `~/.cursor/mcp.json`, Windsurf `~/.codeium/windsurf/mcp_config.json`).
+// Preserves any existing servers and top-level keys.
+function mergeMcpServersConfig(path: string): string {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   let existing: Record<string, unknown> = {};
   try {

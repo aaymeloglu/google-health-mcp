@@ -26,9 +26,9 @@ const STANDARD_TOOLS = [
   "google_health_get_identity",
   "google_health_get_profile",
   "google_health_get_settings",
-  // SEAM: add "log_nutrition" here when the write tool ships (keep alphabetical, between
-  // get_settings and list_data_points).
+  // Add "log_nutrition" here (alphabetical) when the planned write tool ships — see CONTRIBUTING.md.
   "google_health_list_data_points",
+  "google_health_list_data_types",
   "google_health_onboarding",
   "google_health_privacy_audit",
   "google_health_profile_get",
