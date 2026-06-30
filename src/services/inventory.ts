@@ -1,3 +1,4 @@
+import { GOOGLE_HEALTH_DATA_TYPES, GOOGLE_HEALTH_DATA_TYPES_SOURCE } from "../constants.js";
 import { buildCapabilities } from "./capabilities.js";
 
 type SupportedDataCategory = {
@@ -82,7 +83,7 @@ export function buildDataInventory() {
       "Filter fields use snake case, such as heart_rate.sample_time.physical_time or sleep.interval.civil_start_time.",
       "Call the connection status tool before live data tools to verify credentials and local token readiness.",
       "Use raw privacy mode only when the user explicitly requests upstream payloads.",
-      "Google recommends waiting until the end of May 2026 for stable public launches because API changes may occur."
+      "Google Health API v4 is still evolving; check official release notes before production launch decisions because scopes and data types can change."
     ]
   };
 }
@@ -99,5 +100,44 @@ export function formatInventoryMarkdown(inventory: ReturnType<typeof buildDataIn
     "",
     "## Categories",
     ...categoryLines
+  ].join("\n");
+}
+
+export function buildDataTypeCatalog() {
+  const data_types = GOOGLE_HEALTH_DATA_TYPES.map((entry) => ({
+    slug: entry.slug,
+    name: entry.name,
+    kind: entry.kind,
+    supports: [...entry.supports],
+    official_operations: [...entry.official_operations],
+    unit: entry.unit,
+    scope: entry.scope
+  }));
+  return {
+    kind: "data_type_catalog" as const,
+    source: "google-health-mcp-unofficial",
+    official_source: GOOGLE_HEALTH_DATA_TYPES_SOURCE,
+    generated_at: new Date().toISOString(),
+    note: "kebab-case slugs accepted by the data_type parameter. official_operations mirrors the Google Health API data-type table; supports is the connector-safe read-only subset this MCP can validate with list, reconcile and rollup.",
+    count: data_types.length,
+    data_types
+  };
+}
+
+export function formatDataTypeCatalogMarkdown(catalog: ReturnType<typeof buildDataTypeCatalog>): string {
+  const rows = catalog.data_types.map(
+    (entry) => `- \`${entry.slug}\` — ${entry.name}; kind: ${entry.kind}; unit: ${entry.unit}; supports: ${entry.supports.join(", ") || "none"}; scope: ${entry.scope}`
+  );
+  return [
+    "# Google Health Data Types",
+    "",
+    "- **count**: " + catalog.count,
+    "- **official_source**: " + catalog.official_source.url + " (last updated " + catalog.official_source.page_last_updated + ")",
+    "- **supports legend**: list (listDataPoints), reconcile (reconcileDataPoints), rollup (dailyRollUp / rollUp)",
+    "",
+    "## Supported slugs",
+    ...rows,
+    "",
+    "> " + catalog.note
   ].join("\n");
 }

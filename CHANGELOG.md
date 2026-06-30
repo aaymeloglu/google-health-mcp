@@ -1,6 +1,70 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 - 2026-06-27
+
+### Added
+
+- Expand `GOOGLE_HEALTH_DATA_TYPES` to a 39-type snapshot from the official
+  Google Health API data-type table, including official operation names, type
+  kind and scope family.
+- Add `google_health_data_type_coverage`, a read-only MCP tool that returns a
+  static issue #3 validation plan by default and can run explicit live
+  list/reconcile/daily-rollup checks after OAuth.
+- Add `google-health-mcp-server coverage --json` and
+  `google-health-mcp-server coverage --live --json` for safe CLI coverage
+  reports.
+- Add `docs/data-coverage.md` plus README, beta-guide, tool-catalog and LLM
+  documentation for the coverage workflow.
+
+### Security
+
+- Live coverage reports include only operation status and point-count buckets;
+  tests assert that OAuth secrets, local paths and example health values do not
+  leak into the report.
+- Public support and setup-feedback reports now use metadata-only file checks
+  and no longer read local config JSON or token JSON before printing redacted
+  output.
+
+## 0.5.0 - 2026-06-27
+
+### Added
+
+- Add `google-health-mcp-server support --feedback --json`, an anonymous setup
+  feedback bundle for issue #4 and MCP client beta reports.
+- The feedback bundle reports package/runtime posture, setup state, token
+  presence, scope counts, client-readiness booleans, friction markers and
+  reviewer questions without exposing OAuth tokens, Google Cloud client-secret
+  values, local paths, raw token files or health measurements.
+- Add `docs/setup-feedback.md` and wire the anonymous feedback path into the
+  README, beta guide, quickstart, tool docs and LLM docs.
+
+### Security
+
+- Redact local token/config paths from support next-step output so public setup
+  reports do not leak home-directory paths.
+
+## 0.4.9 - 2026-06-27
+
+### Changed
+
+- Refresh the above-the-fold README for Google Health API v4 builders: install,
+  agent prompts, privacy guarantees, tool catalog, Living Body demo path and
+  Delx Wellness cross-links are now visible before the long install docs.
+- Move the full tool catalog into `docs/tools.md` so support answers can link
+  to one stable page.
+- Add `docs/beta-feedback.md` with safe tester workflows for issues #2, #3 and
+  #4.
+- Replace stale "wait until end of May 2026" copy with a current evolving-API
+  note that points to Google's official release notes.
+- Update the opt-in nutrition write scope constant to
+  `https://www.googleapis.com/auth/googlehealth.nutrition.writeonly`, matching
+  Google's write-only scope naming. No write tool ships in this release.
+
+## 0.4.8 - 2026-06-27
+
+### Security
+
+- Pin transitive `hono` resolution to `4.12.27` via npm overrides, resolving production audit advisories while keeping the public MCP API unchanged.
 
 ### Added
 
