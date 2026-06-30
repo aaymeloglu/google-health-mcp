@@ -17,9 +17,13 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        # 22 is the supported floor; 26 is the current line. Testing the
+        # newest line catches native-module ABI drift (e.g. better-sqlite3)
+        # and stdlib changes early. See issue #7.
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [22]
+        node-version: [22, 26]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
