@@ -1,10 +1,15 @@
 import { z } from "zod";
-import { DEFAULT_LIMIT, DEFAULT_MAX_PAGES, GOOGLE_HEALTH_DATA_SOURCE_FAMILIES, GOOGLE_HEALTH_DATA_TYPE_SLUGS, MAX_GOOGLE_HEALTH_LIMIT, MAX_PAGES } from "../constants.js";
+import { DEFAULT_DAILY_ROLLUP_PAGE_SIZE, DEFAULT_LIMIT, DEFAULT_MAX_PAGES, GOOGLE_HEALTH_DATA_SOURCE_FAMILIES, GOOGLE_HEALTH_DATA_TYPE_SLUGS, MAX_GOOGLE_HEALTH_LIMIT, MAX_PAGES } from "../constants.js";
 import { AGENT_CLIENTS } from "../services/agent-manifest.js";
 
 export const ResponseFormatSchema = z.enum(["markdown", "json"]).default("markdown");
 export const AgentClientSchema = z.enum(AGENT_CLIENTS).default("generic");
 export const PrivacyModeValueSchema = z.enum(["summary", "structured", "raw"]);
+export const ExplicitPrivacyIntentSchema = z
+  .boolean()
+  .optional()
+  .describe("Required true when privacy_mode=raw (agent escalation of redaction).");
+
 export const PrivacyModeSchema = PrivacyModeValueSchema.optional()
   .describe("Optional per-call privacy override. Defaults to GOOGLE_HEALTH_PRIVACY_MODE or structured. raw returns upstream Google Health JSON.");
 
@@ -17,6 +22,7 @@ export const DataSourceFamilySchema = z.enum(GOOGLE_HEALTH_DATA_SOURCE_FAMILIES)
 
 export const SimpleReadInputSchema = z.object({
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -65,6 +71,7 @@ export const AuthUrlInputSchema = z.object({
 
 export const ExchangeCodeInputSchema = z.object({
   code: z.string().min(1).describe("OAuth authorization code, or a full redirect URL containing ?code=..."),
+  code_verifier: z.string().min(1).describe("PKCE code verifier from google_health_get_auth_url."),
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -74,6 +81,7 @@ export const DataPointsInputSchema = z.object({
   page_size: z.number().int().min(1).max(MAX_GOOGLE_HEALTH_LIMIT).default(DEFAULT_LIMIT),
   page_token: z.string().optional(),
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -86,10 +94,15 @@ export const DailyRollupInputSchema = z.object({
   start_date: DateSchema,
   end_date: DateSchema.optional().describe("Exclusive end date as YYYY-MM-DD. Defaults to the next day."),
   window_size_days: z.number().int().min(1).max(90).default(1),
-  page_size: z.number().int().min(1).max(MAX_GOOGLE_HEALTH_LIMIT).default(DEFAULT_LIMIT),
+  // Default 90 (not 100): Google validates window_size_days * page_size against a per-type
+  // maxDurationDays cap; nutrition-log is 90 days, so the old DEFAULT_LIMIT=100 broke every
+  // nutrition daily_rollup that relied on schema defaults (issue #15).
+  page_size: z.number().int().min(1).max(MAX_GOOGLE_HEALTH_LIMIT).default(DEFAULT_DAILY_ROLLUP_PAGE_SIZE)
+    .describe("Page size for daily rollup windows. Must satisfy window_size_days * page_size <= the data type's max rollup duration (90 days for nutrition-log)."),
   page_token: z.string().optional(),
   data_source_family: DataSourceFamilySchema,
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -102,6 +115,7 @@ export const RollupInputSchema = z.object({
   page_token: z.string().optional(),
   data_source_family: DataSourceFamilySchema,
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -133,12 +147,14 @@ export const CollectionInputSchema = z.object({
   all_pages: z.boolean().default(false),
   max_pages: z.number().int().min(1).max(MAX_PAGES).default(DEFAULT_MAX_PAGES),
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
 export const IdInputSchema = z.object({
   id: z.union([z.string().min(1), z.number().int().positive()]),
   privacy_mode: PrivacyModeSchema,
+  explicit_user_intent: ExplicitPrivacyIntentSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -146,6 +162,7 @@ export const AuthUrlOutputSchema = z.object({
   auth_url: z.string(),
   redirect_uri: z.string(),
   scopes: z.array(z.string()),
+  code_verifier: z.string().describe("PKCE code verifier. Pass this to google_health_exchange_code."),
   next_step: z.string()
 }).strict();
 
@@ -205,6 +222,8 @@ export const PrivacyAuditOutputSchema = z.object({
   privacy_mode_default: PrivacyModeValueSchema,
   raw_payloads_opt_in: z.boolean(),
   gps_redaction_default: z.boolean(),
+  gps_redacted_keys: z.array(z.string()),
+  gps_redacted_container_keys: z.array(z.string()),
   cache_enabled: z.boolean(),
   cache_path: z.string(),
   token_path: z.string(),
@@ -296,6 +315,7 @@ export const ConnectionStatusOutputSchema = z.object({
   missing_env: z.array(z.string()),
   redirect_uri: z.string().optional(),
   automatic_auth_supported: z.boolean(),
+  headless: z.object({ detected: z.boolean(), reason: z.string() }).strict(),
   config: z.object({ source: z.enum(["env", "local_config", "mixed", "missing"]), path: z.string(), exists: z.boolean(), secure_permissions: z.boolean().optional(), error: z.string().optional() }).strict(),
   token: z.object({ path: z.string(), exists: z.boolean(), readable: z.boolean(), permissions: z.string().optional(), secure_permissions: z.boolean().optional(), expires_at: z.number().optional(), expired: z.boolean().optional(), has_refresh_token: z.boolean().optional(), scope: z.string().optional(), error: z.string().optional() }).strict(),
   oauth: z.object({

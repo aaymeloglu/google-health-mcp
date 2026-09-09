@@ -14,9 +14,9 @@
   <a href="https://www.npmjs.com/package/google-health-mcp-unofficial"><img src="https://img.shields.io/npm/v/google-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=10B981&logo=npm&logoColor=white" alt="npm version" /></a>
   <a href="https://github.com/davidmosiah/google-health-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/davidmosiah/google-health-mcp?style=for-the-badge&labelColor=0F172A&color=2563EB&logo=github" alt="GitHub release" /></a>
   <a href="https://www.npmjs.com/package/google-health-mcp-unofficial"><img src="https://img.shields.io/npm/dm/google-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=0EA5A3&logo=npm&logoColor=white" alt="npm downloads" /></a>
+  <a href="https://github.com/davidmosiah/google-health-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/davidmosiah/google-health-mcp/ci.yml?branch=main&style=for-the-badge&labelColor=0F172A&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-22C55E?style=for-the-badge&labelColor=0F172A" alt="License MIT" /></a>
   <a href="https://wellness.delx.ai/connectors/google-health"><img src="https://img.shields.io/badge/SITE-wellness.delx.ai-0EA5A3?style=for-the-badge&labelColor=0F172A" alt="Site" /></a>
-  <a href="../../actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/aaymeloglu/google-health-mcp/ci.yml?branch=main&style=for-the-badge&labelColor=0F172A&logo=githubactions&logoColor=white&label=CI" alt="CI status" /></a>
 </p>
 
 <p align="center">
@@ -32,7 +32,52 @@
 >
 > Or wire it standalone into Claude Desktop / Cursor / ChatGPT Desktop &mdash; see the install section below.
 
+> **What's new in 0.7.3 (2026-08-03):** headless OAuth (`auth --manual`) for SSH /
+> containers / WSL · real-account rollup/filter fixes from external testers ·
+> opt-in `clinical` scopes for ECG/IRN · pins live in Hermes/living-body.
+> Full notes in [CHANGELOG.md](CHANGELOG.md).
+
+## Highest-leverage contribution — real-account coverage
+
+If you have Fitbit, Pixel Watch, Android health data or Google Health API v4
+access, the most useful help is a redacted coverage report:
+
+```bash
+npx -y google-health-mcp-unofficial coverage --live --json
+```
+
+Review the output, remove anything you do not want public, then post the report
+on [issue #2](https://github.com/davidmosiah/google-health-mcp/issues/2) (or a
+new issue). The timed proof loop on [#21](https://github.com/davidmosiah/google-health-mcp/issues/21)
+closed **1/2** — see [docs/proof-loop-status.md](docs/proof-loop-status.md).
+The command is read-only and is designed to omit OAuth secrets, local paths and raw
+health measurements. A static preflight is available before OAuth with
+`coverage --json`.
+
+### Other ways to help (no account required)
+
+| Action | Link |
+| --- | --- |
+| Star if the project earned it | [stargazers](https://github.com/davidmosiah/google-health-mcp/stargazers) |
+| Docs GFI — headless auth walkthrough | [#22](https://github.com/davidmosiah/google-health-mcp/issues/22) |
+| Compose with other wearables | [`delx-living-body`](https://github.com/davidmosiah/delx-living-body) |
+| One-command Hermes pack | [`delx-wellness-hermes`](https://github.com/davidmosiah/delx-wellness-hermes) |
+| Full registry | [`delx-wellness`](https://github.com/davidmosiah/delx-wellness) |
+
 ---
+
+## HTTP (v2 stateless)
+
+Default is **stdio**. Optional Streamable HTTP — no session id, JSON responses, loopback only:
+
+```bash
+npx -y google-health-mcp-unofficial --http
+# GET  http://127.0.0.1:3000/health
+# POST http://127.0.0.1:3000/mcp   (sessionless)
+```
+
+Env: `GOOGLE_HEALTH_MCP_HOST`, `GOOGLE_HEALTH_MCP_PORT`, `GOOGLE_HEALTH_MCP_TRANSPORT=http`.
+
 
 <!-- /delx-wellness header v2 -->
 
@@ -65,7 +110,7 @@ npx -y google-health-mcp-unofficial auth                        # OAuth, tokens 
 npx -y google-health-mcp-unofficial doctor                      # verifies you're ready
 ```
 
-`doctor --live` calls safe Google Health identity/profile/settings endpoints after auth to prove the API is reachable — the connection proof for this beta. Full install details (scope presets, MFA, recovery) are in the [Install section](#install) below.
+`doctor --live` calls safe Google Health identity/profile/settings endpoints after auth to prove the API is reachable — the connection proof for this beta. That does **not** prove Claude Desktop can invoke tools: Desktop validates `outputSchema` as JSON Schema 2020-12. Use `google-health-mcp-unofficial@0.7.6+` (see [#23](https://github.com/davidmosiah/google-health-mcp/issues/23)). Full install details (scope presets, MFA, recovery) are in the [Install section](#install) below.
 
 ## Try it with your agent
 
@@ -93,7 +138,7 @@ Start here:
 
 - `google_health_connection_status` — local config, token, scope and client readiness
 - `google_health_data_inventory` — supported domains, scopes, data type naming and agent flow
-- `google_health_data_type_coverage` — static coverage plan, or explicit live read-only validation for issue #3
+- `google_health_data_type_coverage` — static coverage plan, or explicit live read-only validation for issue #21
 - `google_health_daily_summary` — daily beta summary from rollups and reconciled streams
 - `google_health_weekly_summary` — weekly beta review
 - `google_health_privacy_audit` — what is stored locally and what is sent to Google
@@ -105,10 +150,54 @@ The full tool catalog — Google Health API methods, agent manifest, diagnostics
 - OAuth tokens are stored locally at `~/.google-health-mcp/tokens.json` with `0600` permissions.
 - Secrets can live in `~/.google-health-mcp/config.json` or `GOOGLE_HEALTH_*` environment variables.
 - Tools never return access tokens, refresh tokens or client secrets.
-- `GOOGLE_HEALTH_PRIVACY_MODE=structured` is the default; `raw` mode is explicit and should be used only for debugging or deep analysis.
+- `GOOGLE_HEALTH_PRIVACY_MODE=structured` is the default; `raw` mode is explicit and should be used only for debugging or deep analysis. An agent asking for `privacy_mode=raw` is refused unless it passes `explicit_user_intent=true`; setting `GOOGLE_HEALTH_PRIVACY_MODE=raw` yourself is your own call and needs no per-call intent.
+- Structured mode preserves complete upstream physiological fields and future v4 additions while removing identity, location and secret-bearing values.
+- "Location redaction" means a concrete key list, not a slogan. Coordinate-bearing **leaf keys**, always dropped in `structured` and `summary` (matched ignoring case, `_` and `-`, so `latitude_e7` and `latitudeE7` are the same key):
+
+  <!-- gps-redacted-keys:start -->
+  `startLatitude`, `startLongitude`, `start_latlng`, `endLatitude`, `endLongitude`, `end_latlng`, `latitude`, `longitude`, `lat`, `lon`, `lng`, `latlng`, `coordinates`, `coordinate`, `gps`, `gpx`, `geoPolylineDTO`, `map`, `polyline`, `summary_polyline`, `activities-tracker-gps`, `latitudeE7`, `longitudeE7`, `latE7`, `lngE7`, `lonE7`, `startLatitudeE7`, `startLongitudeE7`, `endLatitudeE7`, `endLongitudeE7`, `lat_deg`, `lng_deg`, `lon_deg`, `latitudeDegrees`, `longitudeDegrees`
+  <!-- gps-redacted-keys:end -->
+
+  Location **container keys**, dropped as a whole object — with their `address`/`city`/`placeId` siblings and any coordinate spelling this list never anticipated — whenever they hold a place record (an object, or an array containing objects). A container holding only scalars is a label, not a place, and survives: `location: ["gym", "home"]` stays, `location: { latitudeE7: … }` does not.
+
+  <!-- gps-redacted-containers:start -->
+  `location`, `locations`, `geoLocation`, `geoLocations`, `geo`, `geoJson`, `route`, `routes`, `position`, `positions`, `waypoint`, `waypoints`, `trackPoint`, `trackPoints`, `placeVisit`
+  <!-- gps-redacted-containers:end -->
+
+  `google_health_privacy_audit` returns both live lists in `gps_redacted_keys` and `gps_redacted_container_keys`, and `gps_redaction_default` is measured at call time by pushing a synthetic record through both non-raw modes and scanning the output by key **and by coordinate value** — it is not a hardcoded `true`. `npm run test:redaction-docs` fails the build if these two blocks stop matching the code, so the published promise cannot drift from the enforcement list again. Google Health API v4 does not currently document a location/route data type, so this is a forward-compatible guard rather than a patch for an observed leak.
+
+- Limits of that promise, stated instead of implied. Every line below is proved by a behavioural test (`npm run test:declared-limits`) that fails if the behaviour changes; a line marked **NOT VERIFIED** is a statement no test backs, labelled instead of left to read as a guarantee. A limit written here without a test fails the build:
+
+  <!-- declared-limits:start -->
+  - `default_mode_is_structured` — with no `privacy_mode` argument and no `GOOGLE_HEALTH_PRIVACY_MODE`, every read runs in `structured`.
+  - `raw_requires_explicit_user_intent` — an agent asking for `privacy_mode=raw` is refused with `USER_ACTION_REQUIRED` unless it also passes `explicit_user_intent=true`.
+  - `local_raw_default_needs_no_per_call_intent` — `GOOGLE_HEALTH_PRIVACY_MODE=raw` in your own config or environment is honoured on every call with no per-call intent; the gate is about agent escalation, not about the machine owner.
+  - `raw_is_an_unfiltered_passthrough` — `raw` returns the upstream payload unchanged; redaction is a property of `structured` and `summary`, never of `raw`.
+  - `structured_drops_identity_and_secret_keys` — tokens, `authorization`, e-mail, names and avatars are dropped at any depth in `structured`, while physiology and provenance survive.
+  - `summary_is_never_less_restrictive_than_structured` — `summary` strips first and summarizes after, so nothing `structured` drops can reappear in `summary`.
+  - `summary_flattens_numeric_leaves_to_depth_2` — `summary` promotes numeric leaves down to depth 2 of the data-type payload into `value`; anything deeper is not reported at all.
+  - `summary_promotes_unlisted_coordinate_keys` — a coordinate key outside the lists above is promoted by `summary`, not hidden. The key list is the boundary, not the mode.
+  - `altitude_and_elevation_are_not_location` — `altitude` is an official v4 data type (`activity_and_fitness`) and survives redaction, as does `elevation`; an altitude alone does not localize a user.
+  - `altitude_inside_a_place_container_is_dropped` — the same altitude inside a redacted location container dies with the container.
+  - `location_guard_never_observed_upstream` — NOT VERIFIED: Google Health API v4 documents no location/route data type, so no test here has ever seen a real Google payload carrying coordinates. The key list is a forward-compatible guard derived from Google's own encodings, not a measured fix for an observed leak.
+  <!-- declared-limits:end -->
+- Daily rollups use validated civil `YYYY-MM-DD` ranges; general rollups preserve exact timezone-aware ISO date-times. Invalid or reversed ranges fail before HTTP.
 - `support --redacted` prints a copy-paste support bundle for GitHub issues without tokens, secrets, local paths or health measurements.
 - `support --feedback --json` prints an anonymous setup-feedback bundle for beta testers and MCP client reports.
 - `coverage --live --json` prints only redacted data-type status and point-count buckets; it never includes raw Google Health payloads.
+
+## Authorization model & trust boundary
+
+Google OAuth controls which Google account and health scopes this connector can
+access. It does **not** authorize individual MCP callers or tools. The intended
+deployment is one local user running one trusted MCP host; callers that can
+reach the same process share its tool catalog and local OAuth grant.
+
+There is currently no per-user, per-agent, API-key or per-tool RBAC layer. The
+optional HTTP transport binds to `127.0.0.1` by default and must not be exposed
+publicly without standards-compliant MCP authentication, isolated per-user
+Google credentials and an explicit authorization policy. See the full
+[authorization model](docs/authorization.md).
 
 ## See the full agent demo →
 
@@ -128,8 +217,8 @@ If you can test with a real account:
 
 - Run `npx -y google-health-mcp-unofficial doctor` and confirm the OAuth flow is clear.
 - Run `npx -y google-health-mcp-unofficial support --feedback --json` and paste the anonymous bundle into issue #4.
-- Run `npx -y google-health-mcp-unofficial coverage --json` for the static issue #3 plan.
-- After OAuth, run `npx -y google-health-mcp-unofficial coverage --live --json` and paste the reviewed, redacted report into issue #3.
+- Run `npx -y google-health-mcp-unofficial coverage --json` for the static coverage plan.
+- After OAuth, run `npx -y google-health-mcp-unofficial coverage --live --json` and paste the reviewed, redacted report into [issue #2](https://github.com/davidmosiah/google-health-mcp/issues/2).
 - Try `google_health_connection_status`, `google_health_data_inventory` and `google_health_daily_summary` from your MCP client.
 - Open an issue for missing data types, confusing setup steps, client-specific friction or privacy concerns.
 - Do **not** paste OAuth tokens, client secrets, local paths or personal health measurements into public issues.
@@ -137,7 +226,8 @@ If you can test with a real account:
 Useful links:
 
 - [Beta testers wanted](https://github.com/davidmosiah/google-health-mcp/issues/2)
-- [Data coverage validation](https://github.com/davidmosiah/google-health-mcp/issues/3)
+- [Proof loop status (honest 1/2)](docs/proof-loop-status.md)
+- [Beta testers / new coverage](https://github.com/davidmosiah/google-health-mcp/issues/2)
 - [MCP client setup feedback](https://github.com/davidmosiah/google-health-mcp/issues/4)
 - [Beta feedback guide](docs/beta-feedback.md)
 - [Data coverage harness](docs/data-coverage.md)
@@ -161,6 +251,26 @@ npx -y google-health-mcp-unofficial auth
 npx -y google-health-mcp-unofficial doctor
 ```
 
+### Headless hosts (servers, SSH, containers, WSL)
+
+`auth` normally opens a browser and catches the redirect on `127.0.0.1`. On a host with no
+browser that cannot work. When it detects a headless host — SSH, or no `DISPLAY` /
+`WAYLAND_DISPLAY` — it switches to pasting the redirect back in:
+
+```bash
+npx -y google-health-mcp-unofficial auth --manual
+```
+
+Non-interactive provisioning:
+
+```bash
+npx -y google-health-mcp-unofficial auth --print-url
+npx -y google-health-mcp-unofficial auth --code "http://127.0.0.1:3000/callback?code=..."
+```
+
+See [docs/oauth.md](docs/oauth.md) for `--local-callback`, SSH tunnel notes, and
+`GOOGLE_HEALTH_HEADLESS`.
+
 Scope presets keep OAuth consent easier to reason about — `basic`, `activity`, `sleep` and `full`. The full preset list, the exact read-only scope URLs and the OAuth endpoints live in [docs/oauth.md](docs/oauth.md).
 
 If setup gets stuck:
@@ -168,7 +278,7 @@ If setup gets stuck:
 ```bash
 npx -y google-health-mcp-unofficial doctor --fix       # repairs local config/token permissions (chmod 600 where supported)
 npx -y google-health-mcp-unofficial doctor --live      # calls safe identity/profile/settings endpoints to prove the API is reachable
-npx -y google-health-mcp-unofficial coverage --live --json # redacted read-only data-type coverage for issue #3
+npx -y google-health-mcp-unofficial coverage --live --json # redacted read-only data-type coverage for issue #21
 npx -y google-health-mcp-unofficial support --redacted # copy-paste support bundle, no tokens/secrets/measurements
 npx -y google-health-mcp-unofficial support --feedback --json # anonymous setup feedback for issue #4
 ```
@@ -209,6 +319,7 @@ npm test
 
 ## Links
 
+- [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Authorization model](docs/authorization.md)
 - Google Health API: https://developers.google.com/health
 - Release notes: https://developers.google.com/health/release-notes
 - REST reference: https://developers.google.com/health/reference/rest
@@ -249,4 +360,16 @@ The full [Delx Wellness](https://wellness.delx.ai) connector library:
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE). [Code of Conduct](CODE_OF_CONDUCT.md).
+
+> Agent-ready yardstick: [mcp-scorecard](https://github.com/davidmosiah/mcp-scorecard) — aim ≥90 on CI.
+
+## Skill or MCP
+
+Same package, two doors. MCP registers tools on stdio/HTTP. The [skill](skill/SKILL.md) can drive the **same** tools through the CLI when the client has no MCP:
+
+```bash
+npx -y google-health-mcp-unofficial call google_health_connection_status --json '{}'
+```
+
+Copy `skill/SKILL.md` into your agent skills dir.
