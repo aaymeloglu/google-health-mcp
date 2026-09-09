@@ -1,4 +1,301 @@
+## 0.7.8 - 2026-08-29
+
+Skill layer ships in-package (`skill/SKILL.md`). Agents can use MCP tools **or** `call <tool> --json` on the same binary; mutation gates stay identical.
+
+## 0.7.7 - 2026-08-26
+
+### Security
+
+- OAuth authorization now uses PKCE S256 and 128-bit state (was 32-bit).
+- Local OAuth token files are gitignored so they cannot be committed.
+
+## Unreleased (OSS-100)
+
+### Added
+- Coverage report template + issue form; headless auth walkthrough; clinical/dense policies; first-call FAQ.
+
+
+## 0.7.3 - 2026-08-03
+
+### Added (from @jumpmanjay PR #17 — rebased onto 0.7.2)
+
+- **Headless OAuth.** `auth --manual` (aliases `--headless`, `--no-browser`) prints
+  the authorization URL and accepts the redirect URL (or bare code) pasted back,
+  so servers, SSH sessions, containers and WSL can authorize without a local
+  browser. Selected automatically over SSH or when `DISPLAY`/`WAYLAND_DISPLAY`
+  are unset; overridable with `GOOGLE_HEALTH_HEADLESS` and `--local-callback`.
+- `auth --code "<redirect-url-or-code>"` for non-interactive provisioning.
+- `auth --print-url` to emit only the authorization URL.
+- `setup` forwards `--manual` / `--local-callback` to its auth step.
+- `doctor` / `connection_status` report detected headless status and recommend
+  `auth --manual` when appropriate.
+- `scripts/headless-auth-test.mjs` coverage for detection, paste parsing and
+  flow selection.
+
+### Fixed
+
+- Missing `xdg-open`/`open` no longer crashes `auth` with an uncaught `ENOENT`
+  while the callback server is still waiting.
+- Authorization URL is always printed in the callback flow, not only under
+  `--no-open`.
+- Local callback flow records granted OAuth scopes (exchanges full callback URL),
+  matching the manual flow.
+
+Credit: @jumpmanjay (PR #17).
+
+## 0.7.2 - 2026-08-03
+
+### Fixed (from external real-account coverage report — @maxgow on #3)
+
+- **`total-calories` dailyRollUp clamp (issue #18).** Google enforces
+  `window_size_days * page_size ≤ 14` for this type. Same pattern as nutrition-log
+  (#15): `DAILY_ROLLUP_MAX_DURATION_DAYS["total-calories"] = 14` and
+  `resolveDailyRollupPageSize` clamps instead of forwarding
+  `INVALID_ROLLUP_QUERY_DURATION`.
+- **`daily_summary` filter members (issue #19).** Resting HR and daily HRV now
+  filter on `{type}.date`; sleep uses `sleep.interval.civil_end_time`. The old
+  `interval.civil_start_time` path was rejected live with
+  `INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER`. Docs and inventory guidance updated
+  to match the official list filter map.
+
+### Added
+
+- **Opt-in `clinical` scope preset (issue #20).** `full` stays unchanged.
+  `clinical` = `full` + `googlehealth.ecg.readonly` + `googlehealth.irn.readonly`
+  so ECG / irregular-rhythm-notification no longer fail with `MISSING_OAUTH_SCOPE`
+  after an explicit re-auth. Sensitive scopes are never added silently.
+
+## 0.7.1 - 2026-08-01
+
+### Security (round 3: the *limits* printed next to the key list were prose nobody tested)
+
+- **The gate for the list did not cover the sentences around the list.** 0.7.0 shipped
+  `redaction-doc-test.mjs`, which proves the published key list against the exported one,
+  character for character. The paragraph next to it — "raw requires `explicit_user_intent`",
+  "`summary` is never less restrictive", "`altitude` is not location", "`summary` flattens to
+  depth 2" — was still text nothing compared with behaviour. Same defect as 0.6.0 and 0.7.0
+  fixed, one layer further in. **A public promise with no behavioural test is a debt, not a
+  feature.**
+- **`npm run test:declared-limits` is the new gate.** Ten limits are now assertions over the
+  observed output of the built server, and the `declared-limits` block published in README.md
+  and SECURITY.md must mirror the tested registry exactly, in order. Writing a limit into the
+  docs without a test fails the build; deleting the block fails the build. Each assertion was
+  verified to be falsifiable by mutating the code it guards (removing the intent gate, moving
+  the depth-2 floor, summarizing before stripping) and watching the gate go red.
+- **The text was narrowed until it was true, not widened.** SECURITY.md said raw "requires
+  `explicit_user_intent=true`", full stop. The code only requires it of an **agent**
+  escalation: a local `GOOGLE_HEALTH_PRIVACY_MODE=raw` default is honoured on every call with
+  no per-call intent. That is the right behaviour — the machine owner is not an agent — but
+  the sentence promised more than the code did. Both docs and the `google_health_privacy_audit`
+  notes now state the two paths separately.
+- **What an agent gets from this:** `google_health_privacy_audit` publishes one more documented
+  limit (the intent gate and its exception), and every limit an agent may read in the README is
+  now a claim some test would fail on. A limit that cannot be tested — the location guard has
+  never met a real Google payload, because v4 documents no location data type — is labelled
+  **NOT VERIFIED** in both docs instead of reading like a guarantee.
+
+## 0.7.0 - 2026-08-01
+
+### Security (round 2: the key list in 0.6.0 was still Strava's, one layer up)
+
+- **The list an agent could trust had no entry for Google's own coordinate encoding.** 0.6.0
+  fixed the drop-list by adopting `delx-mcp-kit`'s `isGpsKey()` — but that shared list was
+  itself derived from Strava's field names, so `latitudeE7` and `longitudeE7` survived
+  `structured` and `summary`. That is the canonical way *Google* writes a coordinate (integer
+  degrees × 1e7, as in Location History and the Maps APIs): the single most predictable
+  location field name for this provider was the one missing. The diagnosis in 0.6.0 was
+  "somebody copied the policy from Strava without re-deriving the keys for the new provider";
+  the fix then adopted a list that was still Strava's. Corrected by re-deriving for Google:
+  `latitudeE7`, `longitudeE7`, `latE7`, `lngE7`, `lonE7`, the `start*`/`end*` E7 forms,
+  `lat_deg`, `lng_deg`, `lon_deg`, `latitudeDegrees`, `longitudeDegrees`.
+- **Coordinates hid one level down, inside containers nobody was dropping.** `location`,
+  `geoLocation`, `route`, `position`, `trackPoints`, `placeVisit` and friends walked through
+  untouched, carrying coordinates and the `address`/`city`/`placeId` siblings that localize
+  just as well. Agents now get **whole-object** redaction of a place record, so a coordinate
+  spelled in a way the leaf list never anticipated still dies with its container. Conditional
+  on the value: a container holding only scalars is a label, not a place — `location: ["gym",
+  "home"]` survives, `location: { latitudeE7: … }` does not.
+- **Key matching now ignores case, `_` and `-`.** `latitude_e7`, `latitudeE7` and `LATITUDEE7`
+  are one key. Spelling drift was a live source of silent misses.
+- **`gpsRedactionSelfCheck()` scanned key NAMES only, so a rename kept it green.** It now
+  scans the output for the probe's sentinel coordinate VALUES as well, and additionally
+  requires a non-location metric to survive — otherwise a build that redacted everything
+  would have reported a perfect score.
+
+### Added — the gate that matters for anyone reading the docs
+
+- **`npm run test:redaction-docs`: a gate that proves the code cannot prove the prose next to
+  it.** 0.6.0 shipped a behavioural GPS gate and, in the same commit, a README enumerating
+  20 keys against an export of 21 — `activities-tracker-gps` was enforced but never
+  published, and nothing compared the two. The published lists in README.md and SECURITY.md
+  now live inside `<!-- gps-redacted-keys -->` / `<!-- gps-redacted-containers -->` markers and
+  are compared, in order, against `GPS_REDACTED_KEYS`, `GPS_REDACTED_CONTAINER_KEYS` and what
+  `google_health_privacy_audit` actually serves. A promise wider than the code, a code wider
+  than the promise, or a deleted marker block all fail the build.
+- `google_health_privacy_audit` gains `gps_redacted_container_keys` (output-contract addition
+  → minor bump) and publishes its two limits as notes rather than implying total coverage.
+
+### Documented limits (stated instead of implied)
+
+- **`altitude` and `elevation` are deliberately NOT redacted as location.** `altitude` is an
+  official Google Health v4 data type (`activity_and_fitness`); the obvious fix — adding it to
+  the drop-list — would have deleted a real metric from every `altitude` data point, and an
+  altitude does not localize anyone on its own. Altitude *inside* a redacted place container
+  is dropped with the container. There is a regression assert for this.
+- **`summary` mode flattens numeric leaves up to depth 2**, so it promotes values rather than
+  hiding them. It strips before summarizing and can never be less restrictive than
+  `structured`, but any coordinate key outside the published lists would be promoted. The key
+  list is the boundary; the mode is not.
+
+### Removed
+
+- `normalizeStreams()`. "Streams" is a Strava concept with no Google Health v4 endpoint: the
+  function had no call site anywhere in `src/`, and its `includeGps` parameter only deleted
+  `dataSource`. Two asserts in the 0.6.0 fixture were covering code no tool could execute.
+  Function and asserts removed together.
+
+### Scope, honestly
+
+Unchanged from 0.6.0: Google Health API v4 documents no location or route data type, so there
+is no upstream source of coordinates and nothing was leaking in practice. Severity is low.
+What changed is that the published promise now matches the enforced list for *this* provider,
+and drift between the two is a build failure.
+
+## 0.6.0 - 2026-08-01
+
+### Security (hardening + honesty, not a fix for an active leak)
+
+- **`google_health_privacy_audit` was making a promise the code did not keep.** It reported
+  `gps_redaction_default: true` from a hardcoded literal, and README/SECURITY promised GPS
+  redaction, but the drop-list only held Strava-era key names (`latlng`, `gps`, `map`,
+  `polyline`, `summary_polyline`, `tcxLink`). `latitude`, `longitude`, `lat`, `lon`, `lng`,
+  `coordinates`, `startLatitude` and `startLongitude` were never dropped. An agent that
+  trusted the audit before forwarding a payload to a third party was trusting an unbacked
+  claim. Location keys are now sourced from `delx-mcp-kit`'s `isGpsKey()`, the shared
+  definition across the Delx wellness servers.
+- **`summary` mode was less restrictive than `structured`.** `collectNumbers()` walks numbers
+  recursively, so coordinates buried inside a record were flattened back to the top level of
+  the summary response — the mode meant to expose the least exposed the most. Summary now
+  strips first and summarizes the stripped record, and `collectNumbers()` honours the same
+  drop-list.
+- **`gps_redaction_default` is now measured, not asserted.** Each call runs a synthetic record
+  carrying every claimed location key through `structured` and `summary` and scans the output.
+  If a future refactor stops redacting, the audit reports `false` instead of lying.
+- **Honest scope:** Google Health API v4 does not currently document any location/route data
+  type, so there is no known upstream source of coordinates today. Nothing was leaking in
+  practice. This closes the gap between what the server *claimed* and what it *enforced*, and
+  makes the guard real ahead of any v4 data type that carries location.
+
+### Added
+
+- `gps_redacted_keys` in the `google_health_privacy_audit` output — the live, enumerated list
+  behind the claim, so agents can verify coverage instead of trusting a boolean. (Output
+  contract change; hence the minor bump.)
+- `npm run test:gps-redaction` (`scripts/gps-redaction-test.mjs`) — behavioural gate over a
+  synthetic payload with every location key nested at several depths, asserting that neither
+  the keys nor the coordinate values survive `structured` or `summary`, across bare records,
+  arrays, `dataPoints`/`rollupDataPoints` envelopes and stream normalisation, while `raw`
+  stays an honest passthrough. Verified to fail on 0.5.7 (16 location keys survived) and pass
+  on 0.6.0.
+
+### Changed
+
+- `scripts/privacy-cache-test.mjs` no longer asserts `gps_redaction_default === true` against
+  the literal it was reading from the audit. That gate tested a string, not behaviour — which
+  is precisely why the missing keys went unnoticed. It now runs a payload through and checks
+  the output.
+
+## 0.5.7 - 2026-07-30
+
+### Added / Fixed
+
+- Use delx-mcp-kit for privacy escalation.
+
 # Changelog
+
+## 0.7.6 - 2026-08-14
+
+### Fixed
+
+- **Claude Desktop can invoke tools again** ([#23](https://github.com/davidmosiah/google-health-mcp/issues/23)
+  by @wooyoungpark88). `tools/list` no longer advertises
+  `outputSchema.$schema` / `inputSchema.$schema` as JSON Schema draft-07. The
+  MCP SDK (1.29–1.30) still converts Zod with that dialect; we rewrite listed
+  schemas to JSON Schema 2020-12 after conversion. `doctor --live` was never
+  the failing path — only the Desktop validator. Gate:
+  `npm run test:output-schema-dialect`.
+
+## 0.7.5
+
+- Security: raise `hono` override to **4.13.1** (clears moderate MCP SDK transitive advisories); `@hono/node-server@2.1.0`.
+
+
+## 0.7.4
+
+- Security: override `fast-uri@3.1.5` and `ip-address@10.4.0` (high transitive).
+
+
+
+## 0.5.6 - 2026-07-30
+
+### Security
+
+- Security: require explicit_user_intent on revoke/disconnect tools so agents cannot wipe OAuth grants autonomously.
+
+## 0.5.5 - 2026-07-30
+
+### Added
+
+- CLI `demo` command — OAuth-free synthetic contract samples (`is_demo: true`), same payload as MCP tool `google_health_demo`.
+- Shared `buildSyntheticDemoPayload()` used by CLI and MCP tool.
+- Community doc `docs/community/SYNTHETIC_DEMO.md` documents the working `npx … demo` path.
+
+## 0.5.4 - 2026-07-30
+
+### Fixed
+
+- **daily_rollup + nutrition-log (issue #15):** Google Health rejects queries where
+  `window_size_days * page_size` exceeds a per-type max duration (90 days for
+  `nutrition-log`), independent of the requested date range. The tool schema default
+  `page_size=100` made every default nutrition daily rollup fail with a misleading
+  `range` error. Defaults are now 90, and the client clamps page size for known caps
+  so agents (including small local models) succeed without guessing.
+
+### Changed
+
+- `DEFAULT_DAILY_ROLLUP_PAGE_SIZE = 90` for `google_health_daily_rollup` only
+  (list/reconcile keep `DEFAULT_LIMIT = 100`).
+- Documented `DAILY_ROLLUP_MAX_DURATION_DAYS` for confirmed per-type caps.
+
+## 0.5.3 - 2026-07-16
+
+### Fixed
+
+- Validate real calendar dates and exclusive daily-rollup ranges before HTTP, preventing impossible or reversed civil dates from reaching Google Health v4.
+- Validate timezone-aware rollup date-times and reject invalid or reversed instant ranges while preserving the caller's exact ISO values upstream.
+- Log redacted per-domain errors from partial summaries to stderr instead of silently hiding failed Google Health domains.
+- Add an executable HTTP-boundary regression suite and structured-output forward-compatibility checks.
+
+## 0.5.2 - 2026-07-12
+
+### Fixed
+
+- Correct Google Health v4 scorecard / summary field mapping: accept `kcalSum`
+  for calories, sum AZM minutes across heart-rate zones, and convert
+  `weightGramsAvg` to kilograms when present.
+- Harden error-envelope handling for Google Health v4 responses so agent-facing
+  failures stay actionable instead of opaque.
+
+### Added
+
+- Ship `smithery.yaml` so the connector can be discovered and installed via
+  Smithery.
+
+### Changed
+
+- Replace stale “end-of-May 2026 stabilization window” copy in summary and
+  privacy-audit surfaces with the current evolving-API notice aligned to
+  `GOOGLE_HEALTH_BETA_NOTICE`.
 
 ## 0.5.1 - 2026-06-27
 

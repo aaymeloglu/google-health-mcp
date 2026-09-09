@@ -6,8 +6,8 @@ marketing checkbox.
 
 Use this guide when contributing to:
 
-- [Issue #2: Beta testers wanted](https://github.com/davidmosiah/google-health-mcp/issues/2)
-- [Issue #3: Validate data type coverage](https://github.com/davidmosiah/google-health-mcp/issues/3)
+- [Issue #2: Beta testers wanted](https://github.com/davidmosiah/google-health-mcp/issues/2) (new coverage reports)
+- [Proof loop status (honest 1/2)](./proof-loop-status.md) — [#21](https://github.com/davidmosiah/google-health-mcp/issues/21) is closed
 - [Issue #4: Collect anonymous setup feedback](https://github.com/davidmosiah/google-health-mcp/issues/4)
 
 ## Safe First Run

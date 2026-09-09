@@ -39,9 +39,10 @@ import { buildConnectionStatus } from "../services/connection-status.js";
 import { buildDataTypeCoveragePlan, buildLiveDataTypeCoverage, formatCoverageMarkdown } from "../services/coverage-report.js";
 import { buildWellnessContext, formatWellnessContextMarkdown } from "../services/context.js";
 import { getConfig } from "../services/config.js";
-import { bulletList, formatDataPointsMarkdown, makeError, makeResponse } from "../services/format.js";
+import { bulletList, formatDataPointsMarkdown, makeEndpointError, makeError, makeResponse, makeSummaryError } from "../services/format.js";
 import { buildDataInventory, buildDataTypeCatalog, formatDataTypeCatalogMarkdown, formatInventoryMarkdown } from "../services/inventory.js";
 import { applyPrivacy, resolvePrivacyMode } from "../services/privacy.js";
+import { buildSyntheticDemoPayload } from "../services/synthetic-demo.js";
 import {
   buildProfileSummary,
   getOnboardingFlow,
@@ -190,47 +191,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
     inputSchema: ResponseOnlyInputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }, async ({ response_format }) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const payload = {
-      ok: true,
-      is_demo: true,
-      sample: {
-        google_health_daily_summary: {
-          date: today,
-          source: "Pixel Watch 3",
-          activity: { steps: 9180, active_minutes: 44, calories_out: 2410, distance_km: 7.1, floors_climbed: 14 },
-          sleep: { score: 81, duration_min: 458, efficiency: 93, stages: { rem_min: 94, deep_min: 71, light_min: 252, awake_min: 41 } },
-          heart: { resting_heart_rate: 54, hrv_rmssd_ms: 46, max_heart_rate: 158 },
-          body: { weight_kg: 76.2, body_fat_pct: 18.4 },
-        },
-        google_health_wellness_context: {
-          window: "last_24h",
-          sleep_score: 81,
-          sleep_duration_min: 458,
-          steps: 9180,
-          resting_heart_rate: 54,
-          hrv_ms: 46,
-          activity_load: "moderate",
-          recommendation: "Strong overnight recovery — sleep score 81 with HRV trending up from 7-day baseline. Green light for a moderate-to-hard session today. Front-load carbs around the workout window.",
-        },
-        google_health_daily_rollup: {
-          date: today,
-          data_source_family: "users/me/dataSourceFamilies/google-wearables",
-          rollups: {
-            "com.google.step_count.delta": { value: 9180, unit: "count" },
-            "com.google.heart_rate.bpm": { resting: 54, max: 158, avg: 71 },
-            "com.google.sleep.segment": { total_min: 458, efficiency_pct: 93 },
-            "com.google.active_minutes": { value: 44, unit: "minutes" },
-            "com.google.calories.expended": { value: 2410, unit: "kcal" },
-          },
-        },
-      },
-      notes: [
-        "All sample data is synthetic; tagged with is_demo=true.",
-        "Real calls return live data from Google Health API v4 after Google Cloud OAuth setup.",
-        "Google Health API v4 is in beta; field names and shapes may shift before stable launch.",
-      ],
-    };
+    const payload = buildSyntheticDemoPayload();
     const markdown = bulletList("Google Health Demo", {
       is_demo: true,
       steps: 9180,
@@ -251,12 +212,13 @@ export function registerGoogleHealthTools(server: McpServer): void {
   }, async (params) => {
     try {
       const config = getConfig();
-      const url = new GoogleHealthClient(config).authUrl(params.state, params.scopes);
+      const { authUrl, codeVerifier } = new GoogleHealthClient(config).authUrl(params.state, params.scopes);
       const output = {
-        auth_url: url,
+        auth_url: authUrl,
         redirect_uri: config.redirectUri,
         scopes: params.scopes?.length ? params.scopes : config.scopes,
-        next_step: "Open auth_url, approve access, then pass the returned code or full redirect URL to google_health_exchange_code."
+        code_verifier: codeVerifier,
+        next_step: "Open auth_url, approve access, then pass the returned code (or full redirect URL) AND code_verifier to google_health_exchange_code."
       };
       return makeResponse(output, params.response_format, bulletList("Google Health OAuth URL", output));
     } catch (error) {
@@ -272,7 +234,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, async (params) => {
     try {
-      const result = await client().exchangeCode(params.code);
+      const result = await client().exchangeCode(params.code, params.code_verifier);
       const output = { ...result, note: "Token values were stored locally and intentionally omitted from this response." };
       return makeResponse(output, params.response_format, bulletList("Google Health OAuth Exchange", output));
     } catch (error) {
@@ -286,15 +248,16 @@ export function registerGoogleHealthTools(server: McpServer): void {
     inputSchema: SimpleReadInputSchema.shape,
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ response_format, privacy_mode }) => {
+  }, async ({ response_format, privacy_mode, explicit_user_intent }) => {
+    const endpoint = "/v4/users/me/identity";
+    let mode: "summary" | "structured" | "raw" = privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const endpoint = "/v4/users/me/identity";
-      const mode = resolvePrivacyMode(config, privacy_mode);
+      mode = resolvePrivacyMode(config, privacy_mode, { explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).getIdentity(), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), response_format, bulletList("Google Health Identity", data as Record<string, unknown>));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, response_format);
     }
   });
 
@@ -304,15 +267,16 @@ export function registerGoogleHealthTools(server: McpServer): void {
     inputSchema: SimpleReadInputSchema.shape,
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ response_format, privacy_mode }) => {
+  }, async ({ response_format, privacy_mode, explicit_user_intent }) => {
+    const endpoint = "/v4/users/me/profile";
+    let mode: "summary" | "structured" | "raw" = privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const endpoint = "/v4/users/me/profile";
-      const mode = resolvePrivacyMode(config, privacy_mode);
+      mode = resolvePrivacyMode(config, privacy_mode, { explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).getProfile(), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), response_format, bulletList("Google Health Profile", data as Record<string, unknown>));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, response_format);
     }
   });
 
@@ -322,15 +286,16 @@ export function registerGoogleHealthTools(server: McpServer): void {
     inputSchema: SimpleReadInputSchema.shape,
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ response_format, privacy_mode }) => {
+  }, async ({ response_format, privacy_mode, explicit_user_intent }) => {
+    const endpoint = "/v4/users/me/settings";
+    let mode: "summary" | "structured" | "raw" = privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const endpoint = "/v4/users/me/settings";
-      const mode = resolvePrivacyMode(config, privacy_mode);
+      mode = resolvePrivacyMode(config, privacy_mode, { explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).getSettings(), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), response_format, bulletList("Google Health Settings", data as Record<string, unknown>));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, response_format);
     }
   });
 
@@ -341,10 +306,11 @@ export function registerGoogleHealthTools(server: McpServer): void {
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, async (params) => {
+    const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints`;
+    let mode: "summary" | "structured" | "raw" = params.privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const mode = resolvePrivacyMode(config, params.privacy_mode);
-      const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints`;
+      mode = resolvePrivacyMode(config, params.privacy_mode, { explicit_user_intent: (params as { explicit_user_intent?: boolean }).explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).listDataPoints({
         dataType: params.data_type,
         filter: params.filter,
@@ -353,7 +319,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       }), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Data Points", { endpoint, data_type: params.data_type }, data));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, params.response_format);
     }
   });
 
@@ -364,10 +330,11 @@ export function registerGoogleHealthTools(server: McpServer): void {
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, async (params) => {
+    const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:reconcile`;
+    let mode: "summary" | "structured" | "raw" = params.privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const mode = resolvePrivacyMode(config, params.privacy_mode);
-      const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:reconcile`;
+      mode = resolvePrivacyMode(config, params.privacy_mode, { explicit_user_intent: (params as { explicit_user_intent?: boolean }).explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).reconcileDataPoints({
         dataType: params.data_type,
         filter: params.filter,
@@ -377,7 +344,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       }), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Reconciled Data", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family ?? "all" }, data));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, params.response_format);
     }
   });
 
@@ -388,10 +355,11 @@ export function registerGoogleHealthTools(server: McpServer): void {
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, async (params) => {
+    const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:dailyRollUp`;
+    let mode: "summary" | "structured" | "raw" = params.privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const mode = resolvePrivacyMode(config, params.privacy_mode);
-      const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:dailyRollUp`;
+      mode = resolvePrivacyMode(config, params.privacy_mode, { explicit_user_intent: (params as { explicit_user_intent?: boolean }).explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).dailyRollup({
         dataType: params.data_type,
         startDate: params.start_date,
@@ -403,7 +371,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       }), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Daily Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, params.response_format);
     }
   });
 
@@ -414,10 +382,11 @@ export function registerGoogleHealthTools(server: McpServer): void {
     outputSchema: EndpointDataOutputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, async (params) => {
+    const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:rollUp`;
+    let mode: "summary" | "structured" | "raw" = params.privacy_mode ?? "structured";
     try {
       const config = getConfig();
-      const mode = resolvePrivacyMode(config, params.privacy_mode);
-      const endpoint = `/v4/users/me/dataTypes/${params.data_type}/dataPoints:rollUp`;
+      mode = resolvePrivacyMode(config, params.privacy_mode, { explicit_user_intent: (params as { explicit_user_intent?: boolean }).explicit_user_intent });
       const data = applyPrivacy(endpoint, await new GoogleHealthClient(config).rollup({
         dataType: params.data_type,
         startTime: params.start_time,
@@ -429,7 +398,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       }), mode);
       return makeResponse(endpointOutput(endpoint, mode, data), params.response_format, formatDataPointsMarkdown("Google Health Rollup", { endpoint, data_type: params.data_type, data_source_family: params.data_source_family }, data));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeEndpointError(endpoint, mode, (error as Error).message, params.response_format);
     }
   });
 
@@ -482,11 +451,23 @@ export function registerGoogleHealthTools(server: McpServer): void {
   server.registerTool("google_health_revoke_access", {
     title: "Revoke Google Health OAuth Access",
     description: "Revoke the current Google OAuth grant and delete the local token file. Use only when the user explicitly wants to disconnect Google Health. Gated: requires explicit user intent — agents must not call this autonomously.",
-    inputSchema: ResponseOnlyInputSchema.shape,
+    inputSchema: {
+      explicit_user_intent: z
+        .boolean()
+        .optional()
+        .describe("Must be true after the user explicitly asked to disconnect. Prevents agents from revoking autonomously."),
+      response_format: z.enum(["markdown", "json"]).default("markdown")
+    },
     outputSchema: RevokeAccessOutputSchema.shape,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
-  }, async ({ response_format }) => {
+  }, async ({ explicit_user_intent, response_format }) => {
     try {
+      if (explicit_user_intent !== true) {
+        return makeError(
+          "USER_ACTION_REQUIRED: explicit_user_intent must be true to revoke access. Ask the user to confirm disconnect first."
+        );
+      }
+
       const result = await client().revokeAccess();
       const output = { ...result, note: "Google Health access was revoked and local tokens were removed. Re-authorize before future API calls." };
       return makeResponse(output, response_format, bulletList("Google Health Access Revoked", output));
@@ -506,7 +487,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       const summary = await buildDailySummary(client(), params);
       return makeResponse(summary, params.response_format, formatSummaryMarkdown(summary));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeSummaryError("daily_summary", (error as Error).message, params.response_format);
     }
   });
 
@@ -521,7 +502,7 @@ export function registerGoogleHealthTools(server: McpServer): void {
       const summary = await buildWeeklySummary(client(), params);
       return makeResponse(summary, params.response_format, formatSummaryMarkdown(summary));
     } catch (error) {
-      return makeError((error as Error).message);
+      return makeSummaryError("weekly_summary", (error as Error).message, params.response_format);
     }
   });
 
@@ -536,7 +517,9 @@ export function registerGoogleHealthTools(server: McpServer): void {
       const result = await buildSleep(client(), params);
       return makeResponse(result, params.response_format, formatSleepMarkdown(result));
     } catch (error) {
-      return makeError((error as Error).message);
+      // Error payload must still satisfy SleepOutputSchema (kind + generated_at) or
+      // strict clients reject the whole response instead of surfacing the message.
+      return makeSummaryError("sleep", (error as Error).message, params.response_format);
     }
   });
 
