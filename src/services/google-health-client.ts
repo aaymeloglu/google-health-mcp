@@ -1,5 +1,8 @@
 import { URL, URLSearchParams } from "node:url";
+import { createHash, randomBytes } from "node:crypto";
 import {
+  DAILY_ROLLUP_MAX_DURATION_DAYS,
+  DEFAULT_DAILY_ROLLUP_PAGE_SIZE,
   DEFAULT_LIMIT,
   GOOGLE_HEALTH_AUTH_URL,
   GOOGLE_HEALTH_REVOKE_URL,
@@ -45,6 +48,31 @@ export interface RollupQuery extends PageParams {
   dataSourceFamily?: string;
 }
 
+/**
+ * Generate a PKCE code verifier: 43-128 random bytes, base64url encoded.
+ * RFC 7636 requires 43-128 characters; we use 32 random bytes → 43 chars.
+ */
+function generateCodeVerifier(): string {
+  return base64UrlEncode(randomBytes(32));
+}
+
+/**
+ * Generate a PKCE S256 code challenge from a verifier.
+ */
+function generateCodeChallenge(verifier: string): string {
+  return base64UrlEncode(createHash("sha256").update(verifier).digest());
+}
+
+/**
+ * Base64url encode (RFC 4648 §5): standard base64 with URL-safe alphabet.
+ */
+function base64UrlEncode(buffer: Buffer): string {
+  return buffer.toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
 export class GoogleHealthClient {
   private readonly tokenStore: TokenStore;
   private cache?: GoogleHealthCache;
@@ -53,7 +81,9 @@ export class GoogleHealthClient {
     this.tokenStore = new TokenStore(config.tokenPath);
   }
 
-  authUrl(state?: string, scopes?: string[]): string {
+  authUrl(state?: string, scopes?: string[]): { authUrl: string; codeVerifier: string } {
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = generateCodeChallenge(codeVerifier);
     const params = new URLSearchParams({
       client_id: this.config.clientId,
       redirect_uri: this.config.redirectUri,
@@ -65,20 +95,26 @@ export class GoogleHealthClient {
       // is shared with other Google APIs (Gmail/Drive/Calendar), include_granted_scopes=true
       // would merge those grants into the token and every Health call would 403.
       include_granted_scopes: "false",
-      prompt: "consent"
+      prompt: "consent",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256"
     });
     if (state) params.set("state", state);
-    return `${GOOGLE_HEALTH_AUTH_URL}?${params.toString()}`;
+    return {
+      authUrl: `${GOOGLE_HEALTH_AUTH_URL}?${params.toString()}`,
+      codeVerifier
+    };
   }
 
-  async exchangeCode(input: string): Promise<{ ok: true; token_path: string; scope?: string; expires_at?: number }> {
+  async exchangeCode(input: string, codeVerifier: string): Promise<{ ok: true; token_path: string; scope?: string; expires_at?: number }> {
     const code = this.extractCode(input);
     const body = new URLSearchParams({
       client_id: this.config.clientId,
       client_secret: this.config.clientSecret,
       grant_type: "authorization_code",
       code,
-      redirect_uri: this.config.redirectUri
+      redirect_uri: this.config.redirectUri,
+      code_verifier: codeVerifier
     });
     const tokens = await this.requestTokens(body);
     const redirectScope = this.extractScope(input);
@@ -124,16 +160,19 @@ export class GoogleHealthClient {
   }
 
   async dailyRollup(query: DailyRollupQuery): Promise<unknown> {
+    const windowSizeDays = Math.max(1, Math.trunc(query.windowSizeDays ?? 1));
+    const pageSize = resolveDailyRollupPageSize(query.dataType, windowSizeDays, query.pageSize);
     return this.post(`/v4/users/me/dataTypes/${encodeDataType(query.dataType)}/dataPoints:dailyRollUp`, {
       range: civilDateRange(query.startDate, query.endDate ?? nextDate(query.startDate)),
-      windowSizeDays: query.windowSizeDays ?? 1,
-      pageSize: normalizePageSize(query.pageSize),
+      windowSizeDays,
+      pageSize,
       pageToken: query.pageToken,
       dataSourceFamily: query.dataSourceFamily
     });
   }
 
   async rollup(query: RollupQuery): Promise<unknown> {
+    validateTimestampRange(query.startTime, query.endTime);
     return this.post(`/v4/users/me/dataTypes/${encodeDataType(query.dataType)}/dataPoints:rollUp`, {
       range: { startTime: query.startTime, endTime: query.endTime },
       windowSize: query.windowSize,
@@ -346,10 +385,50 @@ function normalizePageSize(value?: number): number | undefined {
   return Math.min(Math.max(Math.trunc(value), 1), MAX_GOOGLE_HEALTH_LIMIT);
 }
 
+/**
+ * Google Health dailyRollUp rejects queries where window_size_days * page_size exceeds a
+ * per-data-type maxDurationDays (INVALID_ROLLUP_QUERY_DURATION). Cap is independent of the
+ * requested start/end range — so a 1-day nutrition query still fails with page_size=100.
+ *
+ * Confirmed cap: nutrition-log = 90 days (issue #15). Unknown types keep the requested size.
+ * When the product would exceed a known cap, we clamp page_size (agent-friendly) instead of
+ * forwarding Google's range-focused error that misleads callers into expanding the date range.
+ */
+export function resolveDailyRollupPageSize(
+  dataType: string,
+  windowSizeDays: number,
+  pageSize?: number
+): number {
+  const window = Math.max(1, Math.trunc(windowSizeDays || 1));
+  const maxDurationDays = DAILY_ROLLUP_MAX_DURATION_DAYS[dataType];
+  const requested =
+    pageSize === undefined
+      ? DEFAULT_DAILY_ROLLUP_PAGE_SIZE
+      : (normalizePageSize(pageSize) ?? DEFAULT_DAILY_ROLLUP_PAGE_SIZE);
+
+  if (maxDurationDays === undefined) {
+    return requested;
+  }
+
+  if (window > maxDurationDays) {
+    throw new Error(
+      `window_size_days=${window} exceeds Google Health max rollup duration of ${maxDurationDays} days for data_type "${dataType}". Lower window_size_days (or use list/reconcile).`
+    );
+  }
+
+  const maxPageSize = Math.max(1, Math.floor(maxDurationDays / window));
+  return Math.min(requested, maxPageSize);
+}
+
 function civilDateRange(startDate: string, endDate: string) {
+  const start = normalizeDate(startDate);
+  const end = normalizeDate(endDate);
+  if (start >= end) {
+    throw new Error("Google Health start date must be earlier than end date");
+  }
   return {
-    start: civilDateTime(startDate, 0, 0, 0),
-    end: civilDateTime(endDate, 0, 0, 0)
+    start: civilDateTime(start, 0, 0, 0),
+    end: civilDateTime(end, 0, 0, 0)
   };
 }
 
@@ -363,8 +442,26 @@ function civilDateTime(date: string, hours: number, minutes: number, seconds: nu
 
 function normalizeDate(value: string): string {
   if (value === "today") return new Date().toISOString().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`Expected date as YYYY-MM-DD, received ${value}`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`Invalid Google Health date: expected YYYY-MM-DD, received ${value}`);
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error(`Invalid Google Health date: ${value}`);
+  }
   return value;
+}
+
+function validateTimestampRange(startTime: string, endTime: string): void {
+  const start = validateTimestamp(startTime, "start");
+  const end = validateTimestamp(endTime, "end");
+  if (start >= end) throw new Error("Google Health start time must be earlier than end time");
+}
+
+function validateTimestamp(value: string, field: "start" | "end"): number {
+  const parsed = Date.parse(value);
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value) || !Number.isFinite(parsed)) {
+    throw new Error(`Invalid Google Health ${field} date-time: use ISO 8601 with a timezone`);
+  }
+  return parsed;
 }
 
 function nextDate(value: string): string {

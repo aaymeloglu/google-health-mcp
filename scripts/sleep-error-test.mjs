@@ -30,3 +30,12 @@ assert.equal(empty.data_quality.nights, 0);
 assert.equal(empty.data_quality.confidence, 'low');
 
 console.log(JSON.stringify({ ok: true, propagates_errors: true }, null, 2));
+
+// The tool-level error response must still satisfy SleepOutputSchema; otherwise a
+// strict MCP client rejects the response instead of showing the error message.
+const { makeSummaryError } = await import('../dist/services/format.js');
+const { SleepOutputSchema } = await import('../dist/schemas/common.js');
+const errorResponse = makeSummaryError('sleep', 'invalid_grant: refresh token rejected', 'markdown');
+assert.equal(errorResponse.isError, true);
+assert.doesNotThrow(() => SleepOutputSchema.parse(errorResponse.structuredContent), 'sleep error payload must match SleepOutputSchema');
+assert.match(errorResponse.structuredContent.error, /invalid_grant/);
