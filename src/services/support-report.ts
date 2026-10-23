@@ -249,8 +249,10 @@ async function buildPublicSetupStatus(options: SupportReportOptions): Promise<Pu
   const requiredEnv = Object.fromEntries(REQUIRED_ENV.map((name) => [name, Boolean(env[name]?.trim())]));
   const localConfig = await inspectPublicFile(getLocalConfigPath(options.homeDir));
   // Public reports never read private local configuration contents.
-  const cacheConfigured = env.GOOGLE_HEALTH_CACHE !== undefined
-    ? parseBool(env.GOOGLE_HEALTH_CACHE)
+  // Match loadConfigSources: empty/whitespace environment values fall back locally.
+  const cacheEnv = env.GOOGLE_HEALTH_CACHE?.trim();
+  const cacheConfigured = cacheEnv
+    ? parseBool(cacheEnv)
     : localConfig.exists ? null : false;
   const envUsed = Object.values(requiredEnv).some(Boolean);
   const configSource: ConfigSource = envUsed && localConfig.exists ? "mixed" : envUsed ? "env" : localConfig.exists ? "local_config" : "missing";
