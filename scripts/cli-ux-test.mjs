@@ -320,13 +320,21 @@ try {
   } finally {
     rmSync(absentConfigHome, { recursive: true, force: true });
   }
-  const humanDoctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--home-dir', dir], {
-    encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir }
-  });
-  assert.equal(humanDoctor.status, 0, humanDoctor.stderr);
-  assert.match(humanDoctor.stdout, /Cache[^\n]*disabled[^\n]*retained/i);
-  assert.doesNotMatch(humanDoctor.stdout, /sleep-client-secret|client-secret-from-setup|\"access\"|\"refresh\"/);
-  assert.ok(!humanDoctor.stdout.includes(tokenPath));
+  for (const [cacheFlag, configured] of [['true', true], ['false', false]]) {
+    const humanDoctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--home-dir', dir], {
+      encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir, GOOGLE_HEALTH_CACHE: cacheFlag }
+    });
+    assert.equal(humanDoctor.status, 0, humanDoctor.stderr);
+    assert.match(humanDoctor.stdout, /Cache[^\n]*disabled/i);
+    assert.match(humanDoctor.stdout, /existing entries preserved and not inspected/i);
+    if (configured) assert.match(humanDoctor.stdout, /configured setting retained/i);
+    else {
+      assert.match(humanDoctor.stdout, /cache option is off/i);
+      assert.doesNotMatch(humanDoctor.stdout, /retained/i);
+    }
+    assert.doesNotMatch(humanDoctor.stdout, /sleep-client-secret|client-secret-from-setup|\"access\"|\"refresh\"/);
+    assert.ok(!humanDoctor.stdout.includes(tokenPath));
+  }
 
   assert.doesNotMatch(setupFeedbackText, /sleep-client-secret/);
   assert.doesNotMatch(setupFeedbackText, /"access"/);
