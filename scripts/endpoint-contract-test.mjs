@@ -197,7 +197,7 @@ try {
     assert.equal(status.authenticated_requests_bypass, true);
     assert.equal(status.existing_entries_preserved, true);
     assert.equal(status.entries_inspected, false);
-    assert.equal(status.entries, 0, 'zero describes active cache entries, not disk contents');
+    assert.equal(Object.hasOwn(status, 'entries'), false, 'uninspected stored entry count must be omitted');
     assert.equal(status.path, config.cachePath);
     assert.match(status.reason, /authenticated payload caching and offline fallback are disabled/i);
     assert.equal(status.http_cache.default_ttl_seconds, 60);
