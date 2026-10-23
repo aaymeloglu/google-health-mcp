@@ -204,7 +204,7 @@ export const CacheStatusOutputSchema = z.object({
   existing_entries_preserved: z.boolean().optional(),
   entries_inspected: z.boolean().optional(),
   path: z.string(),
-  entries: z.number().int().nonnegative(),
+  entries: z.number().int().nonnegative().optional(),
   newest_cached_at: z.string().optional(),
   http_cache: z.object({
     size: z.number().int().nonnegative(),

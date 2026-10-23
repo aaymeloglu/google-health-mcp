@@ -35,7 +35,7 @@ export interface SupportReport {
     automatic_auth_supported: boolean;
     privacy_mode: PrivacyMode;
     cache_enabled: boolean;
-    cache_configured: boolean;
+    cache_configured: boolean | null;
     cache_reason: string;
   };
   token: {
@@ -70,7 +70,7 @@ export interface SetupFeedbackReport {
     local_callback_supported: boolean;
     privacy_mode: PrivacyMode;
     cache_enabled: boolean;
-    cache_configured: boolean;
+    cache_configured: boolean | null;
     cache_reason: string;
   };
   auth_state: {
@@ -111,7 +111,7 @@ type PublicSetupStatus = {
   automatic_auth_supported: boolean;
   privacy_mode: PrivacyMode;
   cache_enabled: boolean;
-  cache_configured: boolean;
+  cache_configured: boolean | null;
   cache_reason: string;
   config: {
     source: ConfigSource;
@@ -248,6 +248,10 @@ async function buildPublicSetupStatus(options: SupportReportOptions): Promise<Pu
   const env = process.env;
   const requiredEnv = Object.fromEntries(REQUIRED_ENV.map((name) => [name, Boolean(env[name]?.trim())]));
   const localConfig = await inspectPublicFile(getLocalConfigPath(options.homeDir));
+  // Public reports never read private local configuration contents.
+  const cacheConfigured = env.GOOGLE_HEALTH_CACHE !== undefined
+    ? parseBool(env.GOOGLE_HEALTH_CACHE)
+    : localConfig.exists ? null : false;
   const envUsed = Object.values(requiredEnv).some(Boolean);
   const configSource: ConfigSource = envUsed && localConfig.exists ? "mixed" : envUsed ? "env" : localConfig.exists ? "local_config" : "missing";
   const missingEnv = localConfig.exists ? [] : REQUIRED_ENV.filter((name) => !requiredEnv[name]);
@@ -278,8 +282,10 @@ async function buildPublicSetupStatus(options: SupportReportOptions): Promise<Pu
     automatic_auth_supported: Boolean(redirectUri && isLocalHttpRedirect(redirectUri)),
     privacy_mode: parsePrivacyMode(env.GOOGLE_HEALTH_PRIVACY_MODE),
     cache_enabled: false,
-    cache_configured: parseBool(env.GOOGLE_HEALTH_CACHE),
-    cache_reason: "Authenticated payload caching and offline fallback are disabled; existing SQLite entries are preserved.",
+    cache_configured: cacheConfigured,
+    cache_reason: cacheConfigured === null
+      ? "Authenticated payload caching and offline fallback are disabled; local configuration is not inspected by public reports and existing SQLite entries are preserved."
+      : "Authenticated payload caching and offline fallback are disabled; existing SQLite entries are preserved.",
     config: {
       source: configSource,
       exists: localConfig.exists

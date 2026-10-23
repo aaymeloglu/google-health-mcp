@@ -81,6 +81,7 @@ try {
   assert.equal(payloadCacheResult.structuredContent?.enabled, false);
   assert.equal(payloadCacheResult.structuredContent?.configured, true);
   assert.equal(payloadCacheResult.structuredContent?.entries_inspected, false);
+  assert.equal(Object.hasOwn(payloadCacheResult.structuredContent, 'entries'), false);
   assert.equal(payloadCacheResult.structuredContent?.existing_entries_preserved, true);
   assert.equal(payloadCacheResult.structuredContent?.path, cacheStatusPath);
   assert.equal(readFileSync(cacheStatusPath, 'utf8'), cacheStatusSentinel);
