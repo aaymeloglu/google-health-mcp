@@ -198,6 +198,11 @@ export const CollectionOutputSchema = z.object({
 
 export const CacheStatusOutputSchema = z.object({
   enabled: z.boolean(),
+  configured: z.boolean().optional(),
+  authenticated_requests_bypass: z.boolean().optional(),
+  reason: z.string().optional(),
+  existing_entries_preserved: z.boolean().optional(),
+  entries_inspected: z.boolean().optional(),
   path: z.string(),
   entries: z.number().int().nonnegative(),
   newest_cached_at: z.string().optional(),
@@ -231,6 +236,8 @@ export const PrivacyAuditOutputSchema = z.object({
   gps_redacted_keys: z.array(z.string()),
   gps_redacted_container_keys: z.array(z.string()),
   cache_enabled: z.boolean(),
+  cache_configured: z.boolean().optional(),
+  cache_reason: z.string().optional(),
   cache_path: z.string(),
   token_path: z.string(),
   stdout_safe: z.boolean(),
@@ -333,7 +340,7 @@ export const ConnectionStatusOutputSchema = z.object({
     profile_tools_ready: z.boolean(),
     nutrition_write_ready: z.boolean()
   }).strict(),
-  cache: z.object({ enabled: z.boolean(), path: z.string() }).strict(),
+  cache: z.object({ enabled: z.boolean(), configured: z.boolean().optional(), reason: z.string().optional(), path: z.string() }).strict(),
   client_checks: z.record(z.string(), z.unknown()).optional(),
   next_steps: z.array(z.string())
 }).strict();

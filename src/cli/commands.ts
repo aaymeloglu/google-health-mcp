@@ -280,7 +280,9 @@ function safeDoctorStatus(status: Awaited<ReturnType<typeof buildConnectionStatu
       has_di_token: raw.token.has_di_token
     } : undefined,
     cache: raw.cache ? {
-      enabled: Boolean(raw.cache.enabled)
+      enabled: Boolean(raw.cache.enabled),
+      configured: Boolean(raw.cache.configured),
+      reason: raw.cache.reason
     } : undefined,
     client_checks: safeHermes ? { hermes: safeHermes } : undefined,
     next_steps: raw.next_steps
@@ -298,7 +300,9 @@ function safeSupportReport(report: Awaited<ReturnType<typeof buildSupportReport>
       missing_env: report.config.missing_env,
       automatic_auth_supported: report.config.automatic_auth_supported,
       privacy_mode: report.config.privacy_mode,
-      cache_enabled: report.config.cache_enabled
+      cache_enabled: report.config.cache_enabled,
+      cache_configured: report.config.cache_configured,
+      cache_reason: report.config.cache_reason
     },
     token: {
       exists: report.token.exists,
@@ -358,7 +362,7 @@ function printDoctor(status: Awaited<ReturnType<typeof buildConnectionStatus>>):
   const scopesOk = status.oauth.scope_status === "ok" || status.oauth.missing_recommended_scopes.length === 0;
   line(scopesOk ? ok : fail, "OAuth scopes");
   line(info, "Privacy mode", status.privacy_mode);
-  line(status.cache.enabled ? ok : info, "Cache", status.cache.enabled ? "enabled" : "disabled");
+  line(status.cache.enabled ? ok : info, "Cache", status.cache.enabled ? "enabled" : `disabled (${status.cache.reason})`);
   if (status.client_checks?.hermes) {
     const hermes = status.client_checks.hermes;
     console.log("");
