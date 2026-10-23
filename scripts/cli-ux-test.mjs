@@ -54,7 +54,9 @@ try {
   assert.equal(ready.ok, true);
   assert.equal(ready.ready_for_google_health_api, true);
   assert.equal(ready.privacy_mode, 'summary');
-  assert.equal(ready.cache.enabled, true);
+  assert.equal(ready.cache.enabled, false);
+  assert.equal(ready.cache.configured, true);
+  assert.match(ready.cache.reason, /disabled/i);
   assert.equal(ready.token.exists, true);
   assert.equal(ready.token.secure_permissions, true);
   assert.equal(ready.token.has_refresh_token, true);
@@ -239,7 +241,8 @@ try {
   ], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH
+      PATH: process.env.PATH,
+      GOOGLE_HEALTH_CACHE: 'sqlite'
     }
   });
   assert.equal(support.status, 0, support.stderr);
@@ -247,6 +250,9 @@ try {
   const supportPayload = JSON.parse(supportText);
   assert.equal(supportPayload.package.name, 'google-health-mcp-unofficial');
   assert.equal(supportPayload.redacted, true);
+  assert.equal(supportPayload.config.cache_enabled, false);
+  assert.equal(supportPayload.config.cache_configured, true);
+  assert.match(supportPayload.config.cache_reason, /disabled/i);
   assert.equal(supportPayload.config.source, 'local_config');
   assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, false);
   assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, false);
@@ -268,13 +274,17 @@ try {
   ], {
     encoding: 'utf8',
     env: {
-      PATH: process.env.PATH
+      PATH: process.env.PATH,
+      GOOGLE_HEALTH_CACHE: 'sqlite'
     }
   });
   assert.equal(setupFeedback.status, 0, setupFeedback.stderr);
   const setupFeedbackText = setupFeedback.stdout;
   const setupFeedbackPayload = JSON.parse(setupFeedbackText);
   assert.equal(setupFeedbackPayload.kind, 'google_health_setup_feedback');
+  assert.equal(setupFeedbackPayload.setup_state.cache_enabled, false);
+  assert.equal(setupFeedbackPayload.setup_state.cache_configured, true);
+  assert.match(setupFeedbackPayload.setup_state.cache_reason, /disabled/i);
   assert.equal(setupFeedbackPayload.anonymous, true);
   assert.equal(setupFeedbackPayload.redacted, true);
   assert.equal(setupFeedbackPayload.client_state.client, 'hermes');

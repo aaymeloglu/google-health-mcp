@@ -187,6 +187,23 @@ try {
       ...(scenario.refresh ? ['Bearer synthetic-refreshed'] : []),
     ], scenario.name);
   }
+  // Status must describe containment without opening or inspecting SQLite.
+  for (const configured of [true, false]) {
+    const statusClient = new GoogleHealthClient({ ...config, cacheEnabled: configured });
+    statusClient.getCache = () => { throw new Error('status must not open SQLite'); };
+    const status = statusClient.cacheStatus();
+    assert.equal(status.enabled, false);
+    assert.equal(status.configured, configured);
+    assert.equal(status.authenticated_requests_bypass, true);
+    assert.equal(status.existing_entries_preserved, true);
+    assert.equal(status.entries_inspected, false);
+    assert.equal(status.entries, 0, 'zero describes active cache entries, not disk contents');
+    assert.equal(status.path, config.cachePath);
+    assert.match(status.reason, /authenticated payload caching and offline fallback are disabled/i);
+    assert.equal(status.http_cache.default_ttl_seconds, 60);
+    assert.equal(typeof status.http_cache.hit_count, 'number');
+    assert.equal(typeof status.http_cache.miss_count, 'number');
+  }
   console.log(JSON.stringify({ ok: true, suite: 'endpoint-contracts', requests: requests.length, persistent_cases: persistentCases.length }, null, 2));
 } finally {
   globalThis.fetch = originalFetch;

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -20,7 +23,42 @@ const expectedResources = [
 const expectedPrompts = ['google_health_daily_checkin', 'google_health_data_type_investigation', 'google_health_weekly_review'];
 
 const client = new Client({ name: 'google-health-mcp-smoke-test', version: '0.0.0' });
-const transport = new StdioClientTransport({ command: 'node', args: ['dist/index.js'] });
+const cacheStatusFixture = mkdtempSync(join(tmpdir(), 'google_health-mcp-cache-status-'));
+const cacheStatusPath = join(cacheStatusFixture, 'preserved-cache.fixture');
+const cacheStatusSentinel = 'synthetic existing entry: must not be opened as SQLite';
+writeFileSync(cacheStatusPath, cacheStatusSentinel);
+const transport = new StdioClientTransport({
+  command: process.execPath,
+  args: ['dist/index.js'],
+  env: {
+    PATH: process.env.PATH ?? '',
+    HOME: cacheStatusFixture,
+    USERPROFILE: cacheStatusFixture,
+    TMPDIR: cacheStatusFixture,
+    GOOGLE_HEALTH_CLIENT_ID: 'synthetic-client',
+    GOOGLE_HEALTH_CLIENT_SECRET: 'synthetic-secret',
+    GOOGLE_HEALTH_REDIRECT_URI: 'http://127.0.0.1:3000/callback',
+    GOOGLE_HEALTH_CACHE: 'sqlite',
+    GOOGLE_HEALTH_CACHE_PATH: cacheStatusPath,
+    GOOGLE_HEALTH_TOKEN_PATH: join(cacheStatusFixture, 'missing-synthetic-tokens.json')
+  }
+});
+// Preserve the original missing-configuration contract separately from the
+// configured-cache fixture; neither child can access an existing home/config.
+const missingConfigClient = new Client({ name: 'google_health-mcp-missing-config', version: '0.0.0' });
+const missingConfigTransport = new StdioClientTransport({
+  command: process.execPath,
+  args: ['dist/index.js'],
+  env: { PATH: process.env.PATH ?? '', HOME: cacheStatusFixture, USERPROFILE: cacheStatusFixture, TMPDIR: cacheStatusFixture }
+});
+await missingConfigClient.connect(missingConfigTransport);
+try {
+  const missing = await missingConfigClient.callTool({ name: 'google_health_connection_status', arguments: { response_format: 'json' } });
+  assert.equal(missing.structuredContent?.ok, false);
+  assert.ok(missing.structuredContent?.missing_env?.includes('GOOGLE_HEALTH_CLIENT_ID'));
+} finally {
+  await missingConfigClient.close();
+}
 await client.connect(transport);
 try {
   const tools = await client.listTools();
@@ -38,8 +76,20 @@ try {
   const prompt = await client.getPrompt({ name: 'google_health_daily_checkin', arguments: { focus: 'sleep' } });
   assert.ok(prompt.messages[0]?.content?.type === 'text');
 
+  const payloadCacheResult = await client.callTool({ name: 'google_health_cache_status', arguments: { response_format: 'json' } });
+  assert.notEqual(payloadCacheResult.isError, true);
+  assert.equal(payloadCacheResult.structuredContent?.enabled, false);
+  assert.equal(payloadCacheResult.structuredContent?.configured, true);
+  assert.equal(payloadCacheResult.structuredContent?.entries_inspected, false);
+  assert.equal(payloadCacheResult.structuredContent?.existing_entries_preserved, true);
+  assert.equal(payloadCacheResult.structuredContent?.path, cacheStatusPath);
+  assert.equal(readFileSync(cacheStatusPath, 'utf8'), cacheStatusSentinel);
+
   const auditResult = await client.callTool({ name: 'google_health_privacy_audit', arguments: { response_format: 'json' } });
   assert.equal(auditResult.structuredContent?.unofficial, true);
+  assert.equal(auditResult.structuredContent?.cache_enabled, false);
+  assert.equal(auditResult.structuredContent?.cache_configured, true);
+  assert.match(auditResult.structuredContent?.cache_reason, /disabled/i);
   assert.ok(auditResult.structuredContent?.secret_env_vars?.includes('GOOGLE_HEALTH_CLIENT_SECRET'));
 
   const capabilitiesResult = await client.callTool({ name: 'google_health_capabilities', arguments: { response_format: 'json' } });
@@ -63,10 +113,15 @@ try {
 
   const statusResult = await client.callTool({ name: 'google_health_connection_status', arguments: { client: 'hermes', response_format: 'json' } });
   assert.equal(statusResult.structuredContent?.ok, false);
-  assert.ok(statusResult.structuredContent?.missing_env?.includes('GOOGLE_HEALTH_CLIENT_ID'));
+  assert.deepEqual(statusResult.structuredContent?.missing_env, []);
+  assert.equal(statusResult.structuredContent?.cache?.enabled, false);
+  assert.equal(statusResult.structuredContent?.cache?.configured, true);
+  assert.match(statusResult.structuredContent?.cache?.reason, /disabled/i);
+  assert.equal(readFileSync(cacheStatusPath, 'utf8'), cacheStatusSentinel);
   assert.equal(statusResult.structuredContent?.client, 'hermes');
 
   console.log(JSON.stringify({ ok: true, tools: toolNames.length, resources: resourceUris.length, prompts: promptNames.length }, null, 2));
 } finally {
   await client.close();
+  rmSync(cacheStatusFixture, { recursive: true, force: true });
 }
