@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import * as authModule from '../dist/cli/auth.js';
 import { buildConnectionStatus } from '../dist/services/connection-status.js';
 import { DEFAULT_SCOPES } from '../dist/constants.js';
+import { loadConfigSources } from '../dist/services/local-config.js';
 
 const { parseLocalRedirectUri } = authModule;
 
@@ -294,13 +295,30 @@ try {
   assert.ok(setupFeedbackPayload.reviewer_questions.some((question) => /MCP client/.test(question)));
   assert.match(setupFeedbackPayload.issue_body, /Anonymous Google Health MCP setup feedback/);
 
-  for (const [cacheFlag, expected] of [['', false], ['sqlite', true]]) {
-    const explicit = spawnSync(process.execPath, ['dist/index.js', 'support', '--redacted', '--json', '--home-dir', dir], {
-      encoding: 'utf8', env: { PATH: process.env.PATH, GOOGLE_HEALTH_CACHE: cacheFlag }
-    });
-    assert.equal(explicit.status, 0, explicit.stderr);
-    assert.equal(JSON.parse(explicit.stdout).config.cache_configured, expected);
-    assert.equal(JSON.parse(explicit.stdout).config.cache_enabled, false);
+  const absentConfigHome = mkdtempSync(join(tmpdir(), 'google-health-cache-config-absent-'));
+  try {
+    for (const [home, localPresent] of [[dir, true], [absentConfigHome, false]]) {
+      for (const cacheFlag of [undefined, '', '   ', 'false', '0', 'sqlite', ' sqlite ', 'true']) {
+        const env = { PATH: process.env.PATH };
+        if (cacheFlag !== undefined) env.GOOGLE_HEALTH_CACHE = cacheFlag;
+        const trimmed = cacheFlag?.trim();
+        const expected = trimmed ? ['1', 'true', 'yes', 'on', 'sqlite'].includes(trimmed.toLowerCase()) : localPresent ? null : false;
+        const effective = loadConfigSources(env, home).values.GOOGLE_HEALTH_CACHE;
+        assert.equal(effective, trimmed || (localPresent ? 'sqlite' : undefined), 'runtime fixture precedence');
+        for (const feedback of [false, true]) {
+          const args = ['dist/index.js', 'support', ...(feedback ? ['--feedback'] : ['--redacted']), '--json', '--home-dir', home];
+          const report = spawnSync(process.execPath, args, { encoding: 'utf8', env });
+          assert.equal(report.status, 0, report.stderr);
+          const payload = JSON.parse(report.stdout);
+          const state = feedback ? payload.setup_state : payload.config;
+          assert.equal(state.cache_configured, expected, `cache precedence local=${localPresent} env=${JSON.stringify(cacheFlag)} feedback=${feedback}`);
+          assert.equal(state.cache_enabled, false);
+          assert.doesNotMatch(report.stdout, /sleep-client-secret|client-secret-from-setup|\"access\"|\"refresh\"/);
+        }
+      }
+    }
+  } finally {
+    rmSync(absentConfigHome, { recursive: true, force: true });
   }
   const humanDoctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--home-dir', dir], {
     encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir }
