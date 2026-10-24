@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { invalidTimezoneMessage, isTimeZone } from "../services/dates.js";
 import { DEFAULT_DAILY_ROLLUP_PAGE_SIZE, DEFAULT_LIMIT, DEFAULT_MAX_PAGES, GOOGLE_HEALTH_DATA_SOURCE_FAMILIES, GOOGLE_HEALTH_DATA_TYPE_SLUGS, MAX_GOOGLE_HEALTH_LIMIT, MAX_PAGES } from "../constants.js";
 import { AGENT_CLIENTS } from "../services/agent-manifest.js";
 
@@ -14,6 +15,10 @@ export const PrivacyModeSchema = PrivacyModeValueSchema.optional()
   .describe("Optional per-call privacy override. Defaults to GOOGLE_HEALTH_PRIVACY_MODE or structured. raw returns upstream Google Health JSON.");
 
 export const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$|^today$/).default("today");
+const TimezoneSchema = z.string().min(1).max(80)
+  .refine(isTimeZone, { error: (issue) => invalidTimezoneMessage(String(issue.input)) })
+  .optional()
+  .describe("IANA timezone used to resolve \"today\" and the day windows, e.g. America/New_York. Defaults to the profile timezone, then UTC.");
 export const DateTimeSchema = z.string().datetime({ offset: true }).describe("ISO 8601 date-time with timezone, e.g. 2026-05-01T00:00:00Z");
 export const GoogleHealthDataTypeSchema = z.string()
   .regex(/^[a-z0-9][a-z0-9-]*$/)
@@ -92,7 +97,8 @@ export const ReconcileInputSchema = DataPointsInputSchema.extend({
 export const DailyRollupInputSchema = z.object({
   data_type: GoogleHealthDataTypeSchema.default("steps"),
   start_date: DateSchema,
-  end_date: DateSchema.optional().describe("Exclusive end date as YYYY-MM-DD. Defaults to the next day."),
+  end_date: DateSchema.unwrap().optional().describe("Exclusive end date as YYYY-MM-DD. Defaults to the next day."),
+  timezone: TimezoneSchema,
   window_size_days: z.number().int().min(1).max(90).default(1),
   // Default 90 (not 100): Google validates window_size_days * page_size against a per-type
   // maxDurationDays cap; nutrition-log is 90 days, so the old DEFAULT_LIMIT=100 broke every
@@ -121,13 +127,13 @@ export const RollupInputSchema = z.object({
 
 export const DailySummaryInputSchema = z.object({
   date: DateSchema,
-  timezone: z.string().min(1).max(80).default("UTC").describe("IANA timezone used only for display, e.g. America/New_York."),
+  timezone: TimezoneSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
 export const WellnessContextInputSchema = z.object({
-  days: z.number().int().min(1).max(30).default(7).describe("Lookback window for normalized Google Health wellness context."),
-  timezone: z.string().min(1).max(80).default("UTC").describe("IANA timezone used only for display, e.g. America/New_York."),
+  days: z.number().int().min(1).max(30).default(7).describe("Currently unused: the context is built from today's summary only."),
+  timezone: TimezoneSchema,
   soreness: z.array(z.string().min(1).max(80)).default([]),
   injury_flags: z.array(z.string().min(1).max(120)).default([]),
   notes: z.string().max(500).optional(),
@@ -137,7 +143,7 @@ export const WellnessContextInputSchema = z.object({
 export const WeeklySummaryInputSchema = z.object({
   days: z.number().int().min(7).max(60).default(7).describe("Recent analysis window in days."),
   compare_days: z.number().int().min(0).max(60).default(7).describe("Prior comparison window in days. Use 0 to disable comparison."),
-  timezone: z.string().min(1).max(80).default("UTC").describe("IANA timezone used only for display, e.g. America/New_York."),
+  timezone: TimezoneSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -192,8 +198,13 @@ export const CollectionOutputSchema = z.object({
 
 export const CacheStatusOutputSchema = z.object({
   enabled: z.boolean(),
+  configured: z.boolean().optional(),
+  authenticated_requests_bypass: z.boolean().optional(),
+  reason: z.string().optional(),
+  existing_entries_preserved: z.boolean().optional(),
+  entries_inspected: z.boolean().optional(),
   path: z.string(),
-  entries: z.number().int().nonnegative(),
+  entries: z.number().int().nonnegative().optional(),
   newest_cached_at: z.string().optional(),
   http_cache: z.object({
     size: z.number().int().nonnegative(),
@@ -225,6 +236,8 @@ export const PrivacyAuditOutputSchema = z.object({
   gps_redacted_keys: z.array(z.string()),
   gps_redacted_container_keys: z.array(z.string()),
   cache_enabled: z.boolean(),
+  cache_configured: z.boolean().optional(),
+  cache_reason: z.string().optional(),
   cache_path: z.string(),
   token_path: z.string(),
   stdout_safe: z.boolean(),
@@ -327,7 +340,7 @@ export const ConnectionStatusOutputSchema = z.object({
     profile_tools_ready: z.boolean(),
     nutrition_write_ready: z.boolean()
   }).strict(),
-  cache: z.object({ enabled: z.boolean(), path: z.string() }).strict(),
+  cache: z.object({ enabled: z.boolean(), configured: z.boolean().optional(), reason: z.string().optional(), path: z.string() }).strict(),
   client_checks: z.record(z.string(), z.unknown()).optional(),
   next_steps: z.array(z.string())
 }).strict();

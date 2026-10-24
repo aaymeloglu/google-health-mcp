@@ -35,6 +35,8 @@ export interface SupportReport {
     automatic_auth_supported: boolean;
     privacy_mode: PrivacyMode;
     cache_enabled: boolean;
+    cache_configured: boolean | null;
+    cache_reason: string;
   };
   token: {
     exists: boolean;
@@ -68,6 +70,8 @@ export interface SetupFeedbackReport {
     local_callback_supported: boolean;
     privacy_mode: PrivacyMode;
     cache_enabled: boolean;
+    cache_configured: boolean | null;
+    cache_reason: string;
   };
   auth_state: {
     token_present: boolean;
@@ -107,6 +111,8 @@ type PublicSetupStatus = {
   automatic_auth_supported: boolean;
   privacy_mode: PrivacyMode;
   cache_enabled: boolean;
+  cache_configured: boolean | null;
+  cache_reason: string;
   config: {
     source: ConfigSource;
     exists: boolean;
@@ -147,7 +153,9 @@ export async function buildSupportReport(options: SupportReportOptions): Promise
       redirect_uri: redactRedirectUri(status.redirect_uri),
       automatic_auth_supported: status.automatic_auth_supported,
       privacy_mode: status.privacy_mode,
-      cache_enabled: status.cache_enabled
+      cache_enabled: status.cache_enabled,
+      cache_configured: status.cache_configured,
+      cache_reason: status.cache_reason
     },
     token: {
       exists: status.token.exists,
@@ -189,7 +197,9 @@ export async function buildSetupFeedbackReport(options: SupportReportOptions): P
       missing_env: status.missing_env,
       local_callback_supported: status.automatic_auth_supported,
       privacy_mode: status.privacy_mode,
-      cache_enabled: status.cache_enabled
+      cache_enabled: status.cache_enabled,
+      cache_configured: status.cache_configured,
+      cache_reason: status.cache_reason
     },
     auth_state: {
       token_present: status.token.exists,
@@ -238,6 +248,12 @@ async function buildPublicSetupStatus(options: SupportReportOptions): Promise<Pu
   const env = process.env;
   const requiredEnv = Object.fromEntries(REQUIRED_ENV.map((name) => [name, Boolean(env[name]?.trim())]));
   const localConfig = await inspectPublicFile(getLocalConfigPath(options.homeDir));
+  // Public reports never read private local configuration contents.
+  // Match loadConfigSources: empty/whitespace environment values fall back locally.
+  const cacheEnv = env.GOOGLE_HEALTH_CACHE?.trim();
+  const cacheConfigured = cacheEnv
+    ? parseBool(cacheEnv)
+    : localConfig.exists ? null : false;
   const envUsed = Object.values(requiredEnv).some(Boolean);
   const configSource: ConfigSource = envUsed && localConfig.exists ? "mixed" : envUsed ? "env" : localConfig.exists ? "local_config" : "missing";
   const missingEnv = localConfig.exists ? [] : REQUIRED_ENV.filter((name) => !requiredEnv[name]);
@@ -267,7 +283,11 @@ async function buildPublicSetupStatus(options: SupportReportOptions): Promise<Pu
     redirect_uri: redirectUri,
     automatic_auth_supported: Boolean(redirectUri && isLocalHttpRedirect(redirectUri)),
     privacy_mode: parsePrivacyMode(env.GOOGLE_HEALTH_PRIVACY_MODE),
-    cache_enabled: parseBool(env.GOOGLE_HEALTH_CACHE),
+    cache_enabled: false,
+    cache_configured: cacheConfigured,
+    cache_reason: cacheConfigured === null
+      ? "Authenticated payload caching and offline fallback are disabled; local configuration is not inspected by public reports and existing SQLite entries are preserved."
+      : "Authenticated payload caching and offline fallback are disabled; existing SQLite entries are preserved.",
     config: {
       source: configSource,
       exists: localConfig.exists

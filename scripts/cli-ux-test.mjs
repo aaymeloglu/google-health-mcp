@@ -7,6 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import * as authModule from '../dist/cli/auth.js';
 import { buildConnectionStatus } from '../dist/services/connection-status.js';
 import { DEFAULT_SCOPES } from '../dist/constants.js';
+import { loadConfigSources } from '../dist/services/local-config.js';
 
 const { parseLocalRedirectUri } = authModule;
 
@@ -54,7 +55,9 @@ try {
   assert.equal(ready.ok, true);
   assert.equal(ready.ready_for_google_health_api, true);
   assert.equal(ready.privacy_mode, 'summary');
-  assert.equal(ready.cache.enabled, true);
+  assert.equal(ready.cache.enabled, false);
+  assert.equal(ready.cache.configured, true);
+  assert.match(ready.cache.reason, /disabled/i);
   assert.equal(ready.token.exists, true);
   assert.equal(ready.token.secure_permissions, true);
   assert.equal(ready.token.has_refresh_token, true);
@@ -179,6 +182,8 @@ try {
     'http://127.0.0.1:4567/callback',
     '--scope-preset',
     'sleep',
+    '--cache',
+    'sqlite',
     '--token-path',
     tokenPath,
     '--home-dir',
@@ -193,6 +198,7 @@ try {
   });
   assert.equal(sleepSetup.status, 0, sleepSetup.stderr);
   const sleepConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(sleepConfig.GOOGLE_HEALTH_CACHE, 'sqlite');
   assert.equal(sleepConfig.GOOGLE_HEALTH_SCOPES, [
     'https://www.googleapis.com/auth/googlehealth.profile.readonly',
     'https://www.googleapis.com/auth/googlehealth.settings.readonly',
@@ -247,6 +253,10 @@ try {
   const supportPayload = JSON.parse(supportText);
   assert.equal(supportPayload.package.name, 'google-health-mcp-unofficial');
   assert.equal(supportPayload.redacted, true);
+  assert.equal(supportPayload.config.cache_enabled, false);
+  assert.equal(supportPayload.config.cache_configured, null);
+  assert.match(supportPayload.config.cache_reason, /disabled/i);
+  assert.match(supportPayload.config.cache_reason, /local configuration.*not inspected/i);
   assert.equal(supportPayload.config.source, 'local_config');
   assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_ID, false);
   assert.equal(supportPayload.config.required_env.GOOGLE_HEALTH_CLIENT_SECRET, false);
@@ -275,12 +285,57 @@ try {
   const setupFeedbackText = setupFeedback.stdout;
   const setupFeedbackPayload = JSON.parse(setupFeedbackText);
   assert.equal(setupFeedbackPayload.kind, 'google_health_setup_feedback');
+  assert.equal(setupFeedbackPayload.setup_state.cache_enabled, false);
+  assert.equal(setupFeedbackPayload.setup_state.cache_configured, null);
+  assert.match(setupFeedbackPayload.setup_state.cache_reason, /disabled/i);
   assert.equal(setupFeedbackPayload.anonymous, true);
   assert.equal(setupFeedbackPayload.redacted, true);
   assert.equal(setupFeedbackPayload.client_state.client, 'hermes');
   assert.ok(Array.isArray(setupFeedbackPayload.friction_markers));
   assert.ok(setupFeedbackPayload.reviewer_questions.some((question) => /MCP client/.test(question)));
   assert.match(setupFeedbackPayload.issue_body, /Anonymous Google Health MCP setup feedback/);
+
+  const absentConfigHome = mkdtempSync(join(tmpdir(), 'google-health-cache-config-absent-'));
+  try {
+    for (const [home, localPresent] of [[dir, true], [absentConfigHome, false]]) {
+      for (const cacheFlag of [undefined, '', '   ', 'false', '0', 'sqlite', ' sqlite ', 'true']) {
+        const env = { PATH: process.env.PATH };
+        if (cacheFlag !== undefined) env.GOOGLE_HEALTH_CACHE = cacheFlag;
+        const trimmed = cacheFlag?.trim();
+        const expected = trimmed ? ['1', 'true', 'yes', 'on', 'sqlite'].includes(trimmed.toLowerCase()) : localPresent ? null : false;
+        const effective = loadConfigSources(env, home).values.GOOGLE_HEALTH_CACHE;
+        assert.equal(effective, trimmed || (localPresent ? 'sqlite' : undefined), 'runtime fixture precedence');
+        for (const feedback of [false, true]) {
+          const args = ['dist/index.js', 'support', ...(feedback ? ['--feedback'] : ['--redacted']), '--json', '--home-dir', home];
+          const report = spawnSync(process.execPath, args, { encoding: 'utf8', env });
+          assert.equal(report.status, 0, report.stderr);
+          const payload = JSON.parse(report.stdout);
+          const state = feedback ? payload.setup_state : payload.config;
+          assert.equal(state.cache_configured, expected, `cache precedence local=${localPresent} env=${JSON.stringify(cacheFlag)} feedback=${feedback}`);
+          assert.equal(state.cache_enabled, false);
+          assert.doesNotMatch(report.stdout, /sleep-client-secret|client-secret-from-setup|\"access\"|\"refresh\"/);
+        }
+      }
+    }
+  } finally {
+    rmSync(absentConfigHome, { recursive: true, force: true });
+  }
+  for (const [cacheFlag, configured] of [['true', true], ['false', false]]) {
+    const humanDoctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--home-dir', dir], {
+      encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir, GOOGLE_HEALTH_CACHE: cacheFlag }
+    });
+    assert.equal(humanDoctor.status, 0, humanDoctor.stderr);
+    assert.match(humanDoctor.stdout, /Cache[^\n]*disabled/i);
+    assert.match(humanDoctor.stdout, /existing entries preserved and not inspected/i);
+    if (configured) assert.match(humanDoctor.stdout, /configured setting retained/i);
+    else {
+      assert.match(humanDoctor.stdout, /cache option is off/i);
+      assert.doesNotMatch(humanDoctor.stdout, /retained/i);
+    }
+    assert.doesNotMatch(humanDoctor.stdout, /sleep-client-secret|client-secret-from-setup|\"access\"|\"refresh\"/);
+    assert.ok(!humanDoctor.stdout.includes(tokenPath));
+  }
+
   assert.doesNotMatch(setupFeedbackText, /sleep-client-secret/);
   assert.doesNotMatch(setupFeedbackText, /"access"/);
   assert.doesNotMatch(setupFeedbackText, /"refresh"/);

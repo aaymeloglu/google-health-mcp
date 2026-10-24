@@ -64,6 +64,8 @@ export interface ConnectionStatus extends Record<string, unknown> {
   };
   cache: {
     enabled: boolean;
+    configured: boolean;
+    reason: string;
     path: string;
   };
   client_checks?: {
@@ -134,7 +136,9 @@ export async function buildConnectionStatus(options: ConnectionStatusOptions = {
     token,
     oauth,
     cache: {
-      enabled: parseBool(value("GOOGLE_HEALTH_CACHE")),
+      enabled: false,
+      configured: parseBool(value("GOOGLE_HEALTH_CACHE")),
+      reason: "Authenticated payload caching and offline fallback are disabled; existing SQLite entries are preserved.",
       path: cachePath
     },
     client_checks: clientChecks,
